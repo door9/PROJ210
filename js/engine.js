@@ -136,15 +136,19 @@ export function worlds(state) {
     if (s) sUnits.push({ date: b.date, units: amtUSD / s });
   }
 
-  const out = { dates, deposits: [], actual: [], neverSell: [], kospi: [], sp500: [] };
+  const rate = (state.settings?.depositRate ?? 3) / 100; // 정기예금 가정 금리(연, 복리)
+  const out = { dates, deposits: [], actual: [], neverSell: [], kospi: [], sp500: [], bank: [], rate: rate * 100 };
   for (const d of dates) {
-    // 투입 원금
-    let dep = 0;
+    // 투입 원금 + 정기예금 세계(같은 날 같은 금액을 연 rate% 복리로)
+    let dep = 0, bank = 0;
     for (const b of buys) {
       if (b.date > d) break;
-      dep += P.toKRW(b.price * b.qty + (b.fee || 0), P.currencyOf(b.symbol), b.date) || 0;
+      const amt = P.toKRW(b.price * b.qty + (b.fee || 0), P.currencyOf(b.symbol), b.date) || 0;
+      dep += amt;
+      bank += amt * Math.pow(1 + rate, daysBetween(b.date, d) / 365);
     }
     out.deposits.push(dep);
+    out.bank.push(bank);
 
     // 실제의 나
     const { open, realized } = replay(trades, d);
@@ -420,7 +424,7 @@ export function aiPack(state) {
   L.push(`- 투입 원금: ${fmtMoney(pf.deposits)}  / 현재 가치: ${fmtMoney(pf.totalKRW)} (수익률 ${pct(pf.ret)})`);
   if (w) {
     const last = w.dates.length - 1;
-    L.push(`- 평행우주(같은 매수를 했을 때의 현재 가치): 실제 ${fmtMoney(w.actual[last])} / 한 번도 안 팔았다면 ${fmtMoney(w.neverSell[last])} / 코스피만 샀다면 ${fmtMoney(w.kospi[last])} / S&P500만 샀다면 ${fmtMoney(w.sp500[last])}`);
+    L.push(`- 평행우주(같은 매수를 했을 때의 현재 가치): 실제 ${fmtMoney(w.actual[last])} / 한 번도 안 팔았다면 ${fmtMoney(w.neverSell[last])} / 코스피만 샀다면 ${fmtMoney(w.kospi[last])} / S&P500만 샀다면 ${fmtMoney(w.sp500[last])} / 정기예금(연 ${w.rate}%)만 했다면 ${fmtMoney(w.bank[last])}`);
   }
   L.push('');
   L.push('## 보유 종목');

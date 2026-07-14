@@ -407,6 +407,14 @@ function vSettings() {
         · 달러 자산은 해당일 원/달러 환율로 환산<br>
         · 모든 평행우주에 같은 가정을 적용하므로 비교는 공정
       </p>
+      <form id="rate-form" class="btn-row" style="align-items:center; gap:6px;">
+        <span class="small">정기예금 가정 금리: 연</span>
+        <input name="depositRate" type="number" step="0.1" min="0" max="20" inputmode="decimal"
+          value="${state.settings.depositRate ?? 3}"
+          style="width:70px; border:1px solid var(--line); border-radius:8px; padding:6px 8px; background:var(--bg); text-align:right;">
+        <span class="small">% (복리·세전)</span>
+        <button class="btn small primary" type="submit">저장</button>
+      </form>
     </div>`;
 }
 vSettings.bind_ = (root) => {
@@ -454,6 +462,14 @@ vSettings.bind_ = (root) => {
       catch (e) { lastErr = e && e.message || String(e); }
     }
     toast(done ? `${done}개 등록 요청 완료 — 몇 분 뒤 시세가 채워집니다` : '등록 실패: ' + (lastErr || '알 수 없는 오류'), 4200);
+  });
+  root.querySelector('#rate-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = parseFloat(e.target.depositRate.value);
+    if (isNaN(v) || v < 0) { toast('금리를 확인하세요'); return; }
+    state.settings.depositRate = v;
+    state.settings.updatedAt = Date.now();
+    saveNow(); render(); toast(`정기예금 가정 금리를 연 ${v}%로 저장했습니다`);
   });
   root.querySelector('#name-form').addEventListener('submit', e => {
     e.preventDefault();

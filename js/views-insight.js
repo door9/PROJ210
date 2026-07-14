@@ -7,7 +7,7 @@ import { uid, todayStr, esc, fmtMoney, fmtPct, fmtQty, pctClass } from './util.j
 import { lineChart, moneyShort } from './chart.js';
 
 const C = {
-  actual: '#0f9d6a', neverSell: '#c8871a', kospi: '#8a8a8a', sp500: '#8b5cc9', deposits: '#b0b0b0',
+  actual: '#0f9d6a', neverSell: '#c8871a', kospi: '#8a8a8a', sp500: '#8b5cc9', bank: '#3b7ea1', deposits: '#b0b0b0',
 };
 
 // ---------- 평행우주 ----------
@@ -24,6 +24,7 @@ function vWorlds() {
     ['손 안 댄 나', w.neverSell[li], C.neverSell, '한 번 산 뒤 지금까지 한 번도 팔지 않음'],
     ['코스피만 산 나', w.kospi[li], C.kospi, '같은 날 같은 금액으로 코스피 지수만 매수'],
     ['S&P500만 산 나', w.sp500[li], C.sp500, '같은 날 같은 금액으로 S&P500만 매수'],
+    ['정기예금만 한 나', w.bank[li], C.bank, `같은 날 같은 금액을 연 ${w.rate}% 정기예금에 (설정에서 금리 변경)`],
   ];
   const dep = w.deposits[li];
   const best = Math.max(...rows.map(r => r[1]));
@@ -35,6 +36,7 @@ function vWorlds() {
       { label: '손 안 댄 나', color: C.neverSell, values: w.neverSell },
       { label: '코스피만', color: C.kospi, values: w.kospi },
       { label: 'S&P500만', color: C.sp500, values: w.sp500 },
+      { label: '정기예금만', color: C.bank, values: w.bank },
       { label: '투입 원금', color: C.deposits, values: w.deposits, dash: true },
     ],
   });
@@ -63,7 +65,7 @@ function vWorlds() {
           </tr>`).join('')}
       </table></div>
       <p class="small" style="margin-bottom:0;">${verdict}</p>
-      <p class="hint">가정: 모든 매수는 새 돈 · 배당 재투자 · 매도 대금은 무이자 현금 · 달러는 당일 환율 환산. 세계 간 조건은 동일하므로 비교는 공정합니다.</p>
+      <p class="hint">가정: 모든 매수는 새 돈 · 배당 재투자 · 매도 대금은 무이자 현금 · 달러는 당일 환율 환산 · 정기예금은 연 ${w.rate}% 복리(세전). 세계 간 조건은 동일하므로 비교는 공정합니다.</p>
     </div>
     <p class="small muted" style="margin:0 2px;">매도·물타기 하나하나의 채점은 <a href="#/actions">개입 점수</a>에서.</p>`;
 }
