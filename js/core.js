@@ -50,12 +50,22 @@ export function confirmModal({ title, body, okLabel = '확인', danger = false }
 const views = {}; // name -> render fn
 export function registerView(name, fn) { views[name] = fn; }
 
+// 하단 탭 단색 선 아이콘 (currentColor 상속)
+const svg = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const ICONS = {
+  home: svg('<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/>'),
+  trades: svg('<path d="M16.7 3.8l3.5 3.5L7.5 20H4v-3.5L16.7 3.8z"/>'),
+  watch: svg('<path d="M12 3.2l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3.2z"/>'),
+  diary: svg('<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8.5h6M9 12.5h6"/>'),
+  more: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),
+};
+
 export const NAV = [
-  { id: 'home', label: '홈', ico: '🏛️' },
-  { id: 'trades', label: '기록', ico: '✍️' },
-  { id: 'watch', label: '관심', ico: '👁️' },
-  { id: 'diary', label: '일지', ico: '📓' },
-  { id: 'more', label: '더보기', ico: '☰' },
+  { id: 'home', label: '홈', ico: ICONS.home },
+  { id: 'trades', label: '기록', ico: ICONS.trades },
+  { id: 'watch', label: '관심', ico: ICONS.watch },
+  { id: 'diary', label: '일지', ico: ICONS.diary },
+  { id: 'more', label: '더보기', ico: ICONS.more },
 ];
 export const NAV_DESKTOP = [
   ['home', '홈'], ['trades', '기록'], ['watch', '관심'], ['worlds', '평행우주'], ['actions', '개입 점수'],
