@@ -1,16 +1,14 @@
-// Dropbox 연동 — memo-app과 같은 Dropbox 앱을 재사용, 파일은 /one-fund/ 아래.
-// 같은 도메인(door9.github.io)에서는 memo-app 로그인 토큰을 빌려 쓸 수 있어
-// 이미 memo-app에 로그인된 기기라면 별도 로그인 없이 바로 동기화된다.
-const CLIENT_ID = '0kfnwj8hluxzpun';
-const CLIENT_SECRET = 'x9tu1nql7ul9lqd';
-const FILE = '/one-fund/data.json';
+// Dropbox 연동 — 1인 펀드 전용 앱(App folder 접근: /앱/<앱이름>/ 폴더에만 접근 가능).
+// PKCE 방식이라 app secret이 필요 없다(공개 코드에 secret을 두지 않아도 됨).
+const CLIENT_ID = 'e3gsucy77ui1dlb';
+const FILE = '/data.json'; // 앱 전용 폴더 기준 경로
 const REDIRECT_URI = location.origin + location.pathname;
 
 const K_TOKEN = 'onefund.dbx_token';
 const K_REFRESH = 'onefund.dbx_refresh';
 
-let accessToken = localStorage.getItem(K_TOKEN) || localStorage.getItem('dbx_token') || null;
-let refreshToken = localStorage.getItem(K_REFRESH) || localStorage.getItem('dbx_refresh') || null;
+let accessToken = localStorage.getItem(K_TOKEN) || null;
+let refreshToken = localStorage.getItem(K_REFRESH) || null;
 
 export const connected = () => !!accessToken;
 
@@ -35,7 +33,7 @@ export async function login() {
     code_challenge: challenge,
     code_challenge_method: 'S256',
     token_access_type: 'offline',
-    scope: 'files.content.read files.content.write files.metadata.read files.metadata.write',
+    scope: 'files.content.read files.content.write',
     state: stateStr,
   });
   location.href = 'https://www.dropbox.com/oauth2/authorize?' + params;
@@ -52,7 +50,7 @@ export async function handleCallback() {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       code, grant_type: 'authorization_code',
-      client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
+      client_id: CLIENT_ID,
       redirect_uri: REDIRECT_URI, code_verifier: verifier,
     }),
   });
@@ -75,7 +73,7 @@ async function refresh() {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'refresh_token', refresh_token: refreshToken,
-      client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
+      client_id: CLIENT_ID,
     }),
   });
   if (!res.ok) return false;
@@ -89,7 +87,6 @@ export function logout() {
   accessToken = null; refreshToken = null;
   localStorage.removeItem(K_TOKEN);
   localStorage.removeItem(K_REFRESH);
-  // memo-app의 토큰(dbx_token)은 건드리지 않는다
 }
 
 // ---- 파일 업로드/다운로드 (401 → 토큰 갱신, 409/429 → 재시도) ----

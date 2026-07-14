@@ -264,7 +264,7 @@ function vSettings() {
       <h3>동기화 (Dropbox)</h3>
       ${Dbx.connected() ? `
         <p class="small muted" style="margin:4px 0 0;">
-          ✅ 연결됨 — 매매 기록·일지·헌법·서한이 내 Dropbox(<code>/one-fund/</code>)에 저장되고 기기 간 동기화됩니다.<br>
+          ✅ 연결됨 — 매매 기록·일지·헌법·서한이 내 Dropbox의 앱 전용 폴더에 저장되고 기기 간 동기화됩니다.<br>
           마지막 동기화: ${Sync.lastSync() ? new Date(Sync.lastSync()).toLocaleString('ko-KR') : '아직 없음'}
           ${Sync.lastError ? `<br><span class="down">최근 오류: ${esc(Sync.lastError)}</span>` : ''}
         </p>
