@@ -2,7 +2,7 @@
 // 삭제는 tombstone(state.deleted[id]=시각)으로 전파해 기기 간 부활을 막는다.
 import * as Dbx from './dropbox.js';
 
-const COLLS = ['trades', 'diary', 'principles', 'letters', 'quotes'];
+const COLLS = ['trades', 'diary', 'principles', 'letters', 'quotes', 'watchlist', 'swaps'];
 const K_LAST = 'onefund.lastSync';
 
 let ctx = null;   // { state, persist(), onApplied() }

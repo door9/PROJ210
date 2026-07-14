@@ -325,6 +325,61 @@ export function diaryRows(state) {
   });
 }
 
+// ---- 관심 종목 ---------------------------------------------------------------
+export function benchOf(symbol) {
+  return P.currencyOf(symbol) === 'KRW' ? '^KS11' : '^GSPC';
+}
+
+// 각 관심 종목: 등록일에 샀다면 지금 몇 %인가 + 같은 기간 지수 + 실제 매수/기다림
+export function watchRows(state) {
+  const trades = sortedTrades(state);
+  return [...(state.watchlist || [])].sort((a, b) => b.date < a.date ? -1 : 1).map(w => {
+    const p0 = P.closeOn(w.symbol, w.date);
+    const last = P.last(w.symbol);
+    const gNow = P.growth(w.symbol, w.date);
+    const gBench = P.growth(benchOf(w.symbol), w.date);
+    const buy = trades.find(t => t.side === 'buy' && t.symbol === w.symbol && t.date >= w.date);
+    const waitG = buy ? P.growth(w.symbol, w.date, buy.date) : null;
+    const gSinceArchive = w.archived && w.archivedAt ? P.growth(w.symbol, w.archivedAt) : null;
+    return {
+      w, p0, last, gNow, gBench,
+      alpha: (gNow != null && gBench != null) ? gNow - gBench : null,
+      buy, waitG, gSinceArchive,
+    };
+  });
+}
+
+// 안목 집계: 관심 등록 종목들의 등록 후 평균 성과 vs 지수
+export function watchAgg(state) {
+  const rows = watchRows(state).filter(r => r.gNow != null && r.gBench != null);
+  if (!rows.length) return null;
+  const avg = a => a.reduce((s, x) => s + x, 0) / a.length;
+  return {
+    count: rows.length,
+    avgG: avg(rows.map(r => r.gNow - 1)),
+    avgBench: avg(rows.map(r => r.gBench - 1)),
+    avgAlpha: avg(rows.map(r => r.alpha)),
+  };
+}
+
+// 교체 시뮬: date에 fromSymbol fromQty주를 팔아 toSymbol을 샀다면 (같은 금액, 환율 반영)
+export function swapRows(state) {
+  return [...(state.swaps || [])].sort((a, b) => b.date < a.date ? -1 : 1).map(s => {
+    const curA = P.currencyOf(s.fromSymbol), curB = P.currencyOf(s.toSymbol);
+    const pa = P.closeOn(s.fromSymbol, s.date), pb = P.closeOn(s.toSymbol, s.date);
+    const gA = P.growth(s.fromSymbol, s.date), gB = P.growth(s.toSymbol, s.date);
+    const amtKRW = pa != null ? P.toKRW(pa * s.fromQty, curA, s.date) : null;
+    const pbKRW = pb != null ? P.toKRW(pb, curB, s.date) : null;
+    const qtyB = (amtKRW != null && pbKRW) ? amtKRW / pbKRW : null;
+    const keptKRW = (pa != null && gA != null) ? P.toKRW(pa * s.fromQty * gA, curA) : null;
+    const swapKRW = (qtyB != null && pb != null && gB != null) ? P.toKRW(qtyB * pb * gB, curB) : null;
+    return {
+      s, amtKRW, qtyB, keptKRW, swapKRW, gA, gB,
+      delta: (keptKRW != null && swapKRW != null) ? swapKRW - keptKRW : null,
+    };
+  });
+}
+
 // ---- 주주 서한 데이터 팩 -------------------------------------------------------
 export function letterPack(state, period) {
   const today = todayStr();
@@ -396,6 +451,21 @@ export function aiPack(state) {
   L.push('## 흔들렸던 순간들 (홀딩 일지)');
   for (const e of state.diary) L.push(`- ${e.date} ${e.symbol} [${e.urge === 'sell' ? '팔고 싶었다' : '더 사고 싶었다'}] ${e.note}`);
   if (!state.diary.length) L.push('- (없음)');
+  L.push('');
+  L.push('## 안 산 판단 (관심 종목)');
+  for (const r of watchRows(state)) {
+    const status = r.buy ? `이후 ${r.buy.date} 실제 매수` : r.w.archived ? '관심 접음' : '계속 관망 중';
+    L.push(`- ${r.w.date} 등록 ${r.w.name || r.w.symbol}: 등록 후 ${pct(r.gNow != null ? r.gNow - 1 : null)} (같은 기간 지수 ${pct(r.gBench != null ? r.gBench - 1 : null)}) — ${status}`);
+    if (r.w.thesis) L.push(`  논지: ${r.w.thesis}`);
+    if (r.w.trigger) L.push(`  매수 조건: ${r.w.trigger}`);
+  }
+  if (!(state.watchlist || []).length) L.push('- (없음)');
+  L.push('');
+  L.push('## 교체 고민의 기록 (하지 않은 스왑)');
+  for (const x of swapRows(state)) {
+    L.push(`- ${x.s.date} ${x.s.fromName || x.s.fromSymbol} ${x.s.fromQty}주 → ${x.s.toName || x.s.toSymbol}: 그대로 ${fmtMoney(x.keptKRW)}, 바꿨다면 ${fmtMoney(x.swapKRW)} (차이 ${fmtMoney(x.delta)})${x.s.note ? ' — ' + x.s.note : ''}`);
+  }
+  if (!(state.swaps || []).length) L.push('- (없음)');
   L.push('');
   L.push('## 나의 투자 헌법과 위반');
   for (const p of state.principles.filter(p => p.active)) L.push(`- ${p.text}`);

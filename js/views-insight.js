@@ -1,5 +1,5 @@
 // 화면: 평행우주, 개입 점수, 홀딩 일지
-import { state, saveNow, toast, registerView, render, confirmModal } from './core.js';
+import { state, saveNow, toast, registerView, render, confirmModal, openModal, closeModal } from './core.js';
 import * as Store from './store.js';
 import * as P from './prices.js';
 import * as E from './engine.js';
@@ -127,6 +127,227 @@ function vActions() {
     </div>`;
 }
 registerView('actions', vActions);
+
+// ---------- 관심 종목 ----------
+function ensureTicker(symbol) {
+  if (P.has(symbol)) return;
+  if (!state.pendingSymbols.includes(symbol)) state.pendingSymbols.push(symbol);
+  if (state.settings.ghPat && state.settings.ghRepo) {
+    P.registerTicker(state.settings, symbol)
+      .then(() => toast(`${symbol} 시세 등록 요청 완료 — 몇 분 뒤 자동 반영됩니다`, 3600))
+      .catch(() => toast('시세 등록 요청 실패 — 설정에서 다시 시도하세요', 3600));
+  } else {
+    toast('시세 미등록 종목입니다. 설정에서 시세 저장소를 연결하세요.', 3200);
+  }
+}
+
+function openSwapModal() {
+  const pf = E.portfolio(state);
+  if (!pf.rows.length) { toast('보유 종목이 있어야 교체 시뮬레이션을 만들 수 있습니다'); return; }
+  const fromOpts = pf.rows.map(r =>
+    `<option value="${esc(r.symbol)}" data-name="${esc(r.name)}" data-qty="${r.qty}">${esc(r.name)} — 보유 ${fmtQty(r.qty)}주</option>`).join('');
+  const toOpts = [...new Set([
+    ...(state.watchlist || []).map(w => w.symbol),
+    ...P.symbols().filter(s => !s.startsWith('^') && s !== 'KRW=X'),
+  ])].filter(s => s).map(s => {
+    const w = (state.watchlist || []).find(x => x.symbol === s);
+    const nm = w?.name || P.info(s)?.name || s;
+    return `<option value="${esc(s)}" data-name="${esc(nm)}">${esc(nm)} (${esc(s)})</option>`;
+  }).join('');
+  const m = openModal(`
+    <h2>교체 시뮬레이션</h2>
+    <p class="small muted" style="margin-top:-6px;">"이걸 팔아 저걸 샀다면"을 저장해 두면, 하지 않은 선택의 성적을 계속 채점해 줍니다.</p>
+    <form id="swap-form">
+      <div class="form-grid">
+        <label class="fld">판다고 가정 (보유)
+          <select name="from">${fromOpts}</select>
+        </label>
+        <label class="fld">수량
+          <input type="number" name="qty" step="any" min="0" inputmode="decimal" required>
+        </label>
+        <label class="fld">산다고 가정
+          <select name="to">${toOpts}</select>
+        </label>
+        <label class="fld">기준일
+          <input type="date" name="date" max="${todayStr()}" value="${todayStr()}" required>
+        </label>
+        <label class="fld full">메모 (왜 고민했나, 왜 결국 안 했나)
+          <textarea name="note" placeholder="예: 성장은 B가 좋아 보이지만, 세금과 확신 부족으로 보류."></textarea>
+        </label>
+      </div>
+      <div class="btn-row" style="justify-content:flex-end;">
+        <button type="button" class="btn" data-x="cancel">취소</button>
+        <button type="submit" class="btn primary">저장</button>
+      </div>
+    </form>`);
+  const form = m.querySelector('#swap-form');
+  const syncQty = () => {
+    const opt = form.from.selectedOptions[0];
+    if (opt && !form.qty.value) form.qty.value = opt.dataset.qty;
+  };
+  form.from.addEventListener('change', () => { form.qty.value = ''; syncQty(); });
+  syncQty();
+  m.querySelector('[data-x=cancel]').onclick = closeModal;
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const qty = parseFloat(form.qty.value);
+    if (!(qty > 0)) { toast('수량을 확인하세요'); return; }
+    const fromOpt = form.from.selectedOptions[0], toOpt = form.to.selectedOptions[0];
+    if (fromOpt.value === toOpt.value) { toast('같은 종목끼리는 비교할 수 없습니다'); return; }
+    state.swaps.push({
+      id: uid(), date: form.date.value,
+      fromSymbol: fromOpt.value, fromName: fromOpt.dataset.name, fromQty: qty,
+      toSymbol: toOpt.value, toName: toOpt.dataset.name,
+      note: form.note.value.trim(),
+      createdAt: Date.now(), updatedAt: Date.now(),
+    });
+    saveNow(); closeModal(); render(); toast('저장했습니다. 이제부터 이 가정이 채점됩니다.');
+  });
+}
+
+function vWatch() {
+  const rows = E.watchRows(state);
+  const active = rows.filter(r => !r.w.archived);
+  const archived = rows.filter(r => r.w.archived);
+  const agg = E.watchAgg(state);
+  const swaps = E.swapRows(state);
+  const today = todayStr();
+  const knownList = P.symbols().filter(s => !s.startsWith('^') && s !== 'KRW=X')
+    .map(s => `<option value="${esc(s)}">${esc(P.info(s)?.name || '')}</option>`).join('');
+
+  const itemHtml = (r, isArchived) => {
+    const { w } = r;
+    const cur = P.currencyOf(w.symbol);
+    return `
+    <li>
+      <div class="trade-head">
+        <b>${esc(w.name || w.symbol)}</b>
+        <span class="dt muted small">${esc(w.symbol)} · ${w.date} 등록${w.sample ? ' · 예시' : ''}</span>
+        <span class="amt small">${r.p0 != null ? `등록일 ${fmtMoney(r.p0, cur)} → ${r.last ? fmtMoney(r.last.close, cur) : '–'}` : '<span class="muted">시세 대기 중</span>'}</span>
+      </div>
+      ${r.gNow != null ? `
+      <div class="trade-meta" style="margin-top:6px;">
+        <span>그날 샀다면 <b class="${pctClass(r.gNow - 1)}">${fmtPct(r.gNow - 1)}</b></span>
+        <span>같은 기간 지수 <span class="${pctClass(r.gBench - 1)}">${fmtPct(r.gBench != null ? r.gBench - 1 : null)}</span></span>
+        ${r.alpha != null ? `<span>차이 <b class="${pctClass(r.alpha)}">${fmtPct(r.alpha)}</b></span>` : ''}
+        ${r.buy ? `<span class="tag">${r.buy.date} 실제 매수</span>${r.waitG != null ? `<span>기다린 동안 <b class="${pctClass(r.waitG - 1)}">${fmtPct(r.waitG - 1)}</b>${r.waitG > 1.03 ? ' — 기다림이 비쌌다' : r.waitG < 0.97 ? ' — 기다린 보람이 있었다' : ''}</span>` : ''}` : ''}
+        ${isArchived && r.gSinceArchive != null ? `<span>접은 뒤 <b class="${pctClass(r.gSinceArchive - 1)}">${fmtPct(r.gSinceArchive - 1)}</b>${r.gSinceArchive > 1.05 ? ' — 아쉬운 이별' : r.gSinceArchive < 0.95 ? ' — 접길 잘했다' : ''}</span>` : ''}
+      </div>` : ''}
+      ${w.thesis ? `<div class="trade-body">${esc(w.thesis)}</div>` : ''}
+      ${w.trigger ? `<div class="trade-body" style="margin-top:2px;"><span class="tag">매수 조건</span> ${esc(w.trigger)}</div>` : ''}
+      <div class="trade-meta">
+        <span style="margin-left:auto; white-space:nowrap;">
+          ${isArchived
+            ? `<button class="btn small" data-unarch="${w.id}">다시 지켜보기</button>`
+            : `<button class="btn small" data-arch="${w.id}">관심 접기</button>`}
+          <button class="btn small danger" data-del="${w.id}">삭제</button>
+        </span>
+      </div>
+    </li>`;
+  };
+
+  const swapItems = swaps.map(x => `
+    <li>
+      <div class="trade-head">
+        <b>${esc(x.s.fromName || x.s.fromSymbol)} ${fmtQty(x.s.fromQty)}주 → ${esc(x.s.toName || x.s.toSymbol)}</b>
+        <span class="dt muted small">${x.s.date} 기준${x.s.sample ? ' · 예시' : ''}${x.qtyB != null ? ` · 환산 ${fmtQty(Math.round(x.qtyB * 100) / 100)}주` : ''}</span>
+      </div>
+      ${x.keptKRW != null && x.swapKRW != null ? `
+      <div class="trade-meta" style="margin-top:6px;">
+        <span>그대로 뒀다면 <b>${fmtMoney(x.keptKRW)}</b></span>
+        <span>바꿨다면 <b>${fmtMoney(x.swapKRW)}</b></span>
+        <span>차이 <b class="${pctClass(x.delta)}">${fmtMoney(x.delta)}</b> ${x.delta > 0 ? '— 바꾸는 게 나았다' : x.delta < 0 ? '— 안 바꾸길 잘했다' : ''}</span>
+      </div>` : '<div class="trade-meta"><span class="muted">시세 대기 중</span></div>'}
+      ${x.s.note ? `<div class="trade-body">${esc(x.s.note)}</div>` : ''}
+      <div class="trade-meta"><span style="margin-left:auto;"><button class="btn small danger" data-delswap="${x.s.id}">삭제</button></span></div>
+    </li>`).join('');
+
+  return `
+    <div class="view-title">관심 종목</div>
+    <p class="view-desc">사는 것만 판단이 아닙니다. 안 산 것, 안 바꾼 것도 판단이고 — 여기서는 그 판단도 채점받습니다.</p>
+    ${agg && agg.count >= 2 ? `
+    <div class="card">
+      <h3>안목 점수</h3>
+      <p class="small" style="margin:4px 0 0;">
+        관심 등록한 ${agg.count}개 종목은 등록 후 평균 <b class="${pctClass(agg.avgG)}">${fmtPct(agg.avgG)}</b>,
+        같은 기간 지수는 <b class="${pctClass(agg.avgBench)}">${fmtPct(agg.avgBench)}</b>.
+        당신의 눈은 지수 대비 <b class="${pctClass(agg.avgAlpha)}">${fmtPct(agg.avgAlpha)}</b>p입니다.
+      </p>
+    </div>` : ''}
+    <div class="card">
+      <h3>관심 등록</h3>
+      <form id="watch-form">
+        <div class="form-grid">
+          <label class="fld">종목
+            <input name="symbol" list="watch-symlist" placeholder="티커 (예: 005930 또는 AAPL)" required autocomplete="off">
+            <datalist id="watch-symlist">${knownList}</datalist>
+          </label>
+          <label class="fld">등록일
+            <input type="date" name="date" max="${today}" value="${today}" required>
+          </label>
+          <label class="fld full">왜 눈여겨보는가 — 그리고 왜 아직 안 사는가
+            <textarea name="thesis" placeholder="이 글이 나중에 이 종목에 대한 내 판단력의 증거가 됩니다."></textarea>
+          </label>
+          <label class="fld full">어떤 조건이 되면 살 것인가
+            <textarea name="trigger" placeholder="예: 다음 분기 실적에서 마진 개선이 확인되면"></textarea>
+          </label>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;"><button class="btn primary" type="submit">등록</button></div>
+      </form>
+    </div>
+    <div class="card">
+      <h3>지켜보는 중 ${active.length ? `(${active.length})` : ''}</h3>
+      ${active.length ? `<ul class="list-plain">${active.map(r => itemHtml(r, false)).join('')}</ul>` : '<div class="empty">아직 관심 종목이 없습니다</div>'}
+    </div>
+    <div class="card">
+      <h3>교체 시뮬레이션 — 하지 않은 선택의 성적</h3>
+      <div class="btn-row" style="margin:0 0 6px;"><button class="btn primary" data-x="newswap">새 시뮬레이션</button></div>
+      ${swapItems ? `<ul class="list-plain">${swapItems}</ul>` : '<div class="empty">아직 저장된 가정이 없습니다</div>'}
+    </div>
+    ${archived.length ? `
+    <div class="card">
+      <h3>접어둔 종목 (${archived.length})</h3>
+      <ul class="list-plain">${archived.map(r => itemHtml(r, true)).join('')}</ul>
+    </div>` : ''}`;
+}
+vWatch.bind_ = (root) => {
+  root.querySelector('#watch-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const f = e.target;
+    const symbol = P.resolveSymbol(f.symbol.value);
+    if (!symbol) { toast('종목을 입력하세요'); return; }
+    if ((state.watchlist || []).some(w => w.symbol === symbol && !w.archived)) { toast('이미 지켜보는 종목입니다'); return; }
+    state.watchlist.push({
+      id: uid(), symbol, name: P.info(symbol)?.name || symbol,
+      date: f.date.value, thesis: f.thesis.value.trim(), trigger: f.trigger.value.trim(),
+      archived: false, createdAt: Date.now(), updatedAt: Date.now(),
+    });
+    ensureTicker(symbol);
+    saveNow(); render(); toast('등록했습니다. 오늘부터 이 판단이 채점됩니다.');
+  });
+  root.querySelector('[data-x=newswap]').addEventListener('click', openSwapModal);
+  root.querySelectorAll('[data-arch]').forEach(b => b.addEventListener('click', () => {
+    const w = state.watchlist.find(x => x.id === b.dataset.arch);
+    if (w) { w.archived = true; w.archivedAt = todayStr(); w.updatedAt = Date.now(); saveNow(); render(); toast('접었습니다. 이후에도 조용히 추적합니다.'); }
+  }));
+  root.querySelectorAll('[data-unarch]').forEach(b => b.addEventListener('click', () => {
+    const w = state.watchlist.find(x => x.id === b.dataset.unarch);
+    if (w) { w.archived = false; w.updatedAt = Date.now(); saveNow(); render(); }
+  }));
+  root.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+    const ok = await confirmModal({ title: '관심 종목 삭제', body: '기록과 채점이 함께 사라집니다. "관심 접기"는 기록을 남기면서 목록만 정리합니다.', okLabel: '삭제', danger: true });
+    if (!ok) return;
+    Store.removeItem(state, 'watchlist', b.dataset.del);
+    saveNow(); render();
+  }));
+  root.querySelectorAll('[data-delswap]').forEach(b => b.addEventListener('click', async () => {
+    const ok = await confirmModal({ title: '시뮬레이션 삭제', body: '이 가정의 채점 기록을 삭제합니다.', okLabel: '삭제', danger: true });
+    if (!ok) return;
+    Store.removeItem(state, 'swaps', b.dataset.delswap);
+    saveNow(); render();
+  }));
+};
+registerView('watch', vWatch);
 
 // ---------- 홀딩 일지 ----------
 function vDiary() {

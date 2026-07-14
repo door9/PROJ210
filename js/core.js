@@ -53,12 +53,12 @@ export function registerView(name, fn) { views[name] = fn; }
 export const NAV = [
   { id: 'home', label: '홈', ico: '🏛️' },
   { id: 'trades', label: '기록', ico: '✍️' },
-  { id: 'worlds', label: '평행우주', ico: '🌌' },
+  { id: 'watch', label: '관심', ico: '👁️' },
   { id: 'diary', label: '일지', ico: '📓' },
   { id: 'more', label: '더보기', ico: '☰' },
 ];
 export const NAV_DESKTOP = [
-  ['home', '홈'], ['trades', '기록'], ['worlds', '평행우주'], ['actions', '개입 점수'],
+  ['home', '홈'], ['trades', '기록'], ['watch', '관심'], ['worlds', '평행우주'], ['actions', '개입 점수'],
   ['diary', '일지'], ['quotes', '글귀'], ['letters', '서한'], ['rules', '헌법'], ['ai', 'AI 복기'], ['settings', '설정'],
 ];
 

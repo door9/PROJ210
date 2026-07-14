@@ -16,6 +16,8 @@ export function defaultState() {
     principles: [],  // 투자 헌법
     letters: [],     // 주주 서한
     quotes: [],      // 글귀 서랍 (책·자료에서 모은 문장)
+    watchlist: [],   // 관심 종목 (안 산 판단의 기록)
+    swaps: [],       // 교체 시뮬레이션 (보유 A → 관심 B 가정)
     deleted: {},     // tombstone: {id: 삭제시각} — 동기화 시 부활 방지
     pendingSymbols: [], // 시세 파일이 아직 없는 심볼 (기기 로컬, 동기화 안 함)
   };
@@ -108,10 +110,19 @@ export function sampleData() {
     { id: uid(), sample: true, period: '2026-Q1', createdAt: Date.now(), updatedAt: Date.now(),
       body: '주주(=나)에게.\n\n이번 분기 삼성전자를 절반 넘게 팔았다. 계획했던 밸류에이션에 도달했기 때문이라고 썼지만, 솔직히는 급등이 무서웠던 것도 있다. 남긴 40주는 계획대로 2026년 말까지 끌고 간다.\n\nSK하이닉스는 4월 폭락 때 팔고 싶었지만 참았다. 참은 것이 이번 분기 가장 잘한 일이다.\n\n다음 분기에는 새 종목을 늘리기보다 지금 가진 것을 공부하는 데 시간을 쓰겠다.' },
   ];
-  return { trades, diary, principles, letters, quotes };
+  const watchlist = [
+    d({ symbol: 'AAPL', name: 'Apple', date: '2025-09-01',
+        thesis: '팔고 나니 계속 신경 쓰인다. 서비스 매출 재가속 여부를 지켜보는 중.',
+        trigger: '새 기기 사이클이 확인되거나, 밸류에이션이 시장 평균 수준까지 내려오면.' }),
+  ];
+  const swaps = [
+    d({ date: '2025-10-01', fromSymbol: '005930.KS', fromName: '삼성전자', fromQty: 20,
+        toSymbol: 'AAPL', toName: 'Apple', note: '삼성전자 일부를 애플로 바꿀까 고민했지만 그대로 두기로 했다.' }),
+  ];
+  return { trades, diary, principles, letters, quotes, watchlist, swaps };
 }
 
-const SAMPLE_COLLS = ['trades', 'diary', 'principles', 'letters', 'quotes'];
+const SAMPLE_COLLS = ['trades', 'diary', 'principles', 'letters', 'quotes', 'watchlist', 'swaps'];
 
 export function addSample(state) {
   const s = sampleData();
