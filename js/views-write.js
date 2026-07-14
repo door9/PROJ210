@@ -370,7 +370,7 @@ function vSettings() {
       </p>
       <form id="gh-form" class="form-grid" style="margin-top:10px;">
         <label class="fld">저장소
-          <input name="ghRepo" placeholder="door9/one-fund-data" value="${esc(state.settings.ghRepo || '')}">
+          <input name="ghRepo" placeholder="door9/one-fund-data" value="${esc(state.settings.ghRepo || 'door9/one-fund-data')}">
         </label>
         <label class="fld">개인 접근 토큰 (PAT)
           <input name="ghPat" type="password" placeholder="${state.settings.ghPat ? '저장됨 (변경 시에만 입력)' : 'github_pat_...'}" autocomplete="off">
@@ -381,7 +381,8 @@ function vSettings() {
       </form>
       <div id="gh-test-result"></div>
       ${state.pendingSymbols.length ? `
-      <div class="warnbox">시세 미등록: <b>${state.pendingSymbols.map(esc).join(', ')}</b></div>
+      <div class="warnbox">시세 미표시: <b>${state.pendingSymbols.map(esc).join(', ')}</b><br>
+      ${state.settings.ghPat ? '아래 버튼으로 등록을 요청할 수 있습니다.' : '위에 토큰을 저장하면 대부분 자동으로 해결됩니다. 이미 등록된 종목은 연결 즉시 시세가 나타나고 이 목록에서 사라집니다.'}</div>
       <div class="btn-row">
         <button class="btn small primary" data-x="regpending">미등록 종목 시세 등록 요청</button>
         <button class="btn small" data-x="clearpending">목록 비우기</button>
@@ -442,12 +443,17 @@ vSettings.bind_ = (root) => {
     }
   });
   root.querySelector('[data-x=regpending]')?.addEventListener('click', async () => {
-    const syms = [...state.pendingSymbols];
-    let done = 0;
-    for (const s of syms) {
-      try { await P.registerTicker(state.settings, s); done++; } catch { /* 실패 항목은 남김 */ }
+    if (!state.settings.ghPat || !state.settings.ghRepo) {
+      toast('먼저 위 칸에 개인 접근 토큰을 넣고 "저장 후 연결 확인"을 누르세요', 4200);
+      return;
     }
-    toast(done ? `${done}개 등록 요청 완료 — 몇 분 뒤 시세가 채워집니다` : '등록 실패: 토큰·저장소 설정을 확인하세요');
+    const syms = [...state.pendingSymbols];
+    let done = 0, lastErr = null;
+    for (const s of syms) {
+      try { await P.registerTicker(state.settings, s); done++; }
+      catch (e) { lastErr = e && e.message || String(e); }
+    }
+    toast(done ? `${done}개 등록 요청 완료 — 몇 분 뒤 시세가 채워집니다` : '등록 실패: ' + (lastErr || '알 수 없는 오류'), 4200);
   });
   root.querySelector('#name-form').addEventListener('submit', e => {
     e.preventDefault();
