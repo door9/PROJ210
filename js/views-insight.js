@@ -55,7 +55,7 @@ function vWorlds() {
     <div class="card">
       <h3>현재 가치 (투입 원금 ${fmtMoney(dep)})</h3>
       <div class="tbl-wrap"><table class="tbl">
-        <tr><th>세계</th><th class="num">현재 가치</th><th class="num">수익률</th><th class="num">실제 대비</th></tr>
+        <tr><th>세계</th><th class="num">현재 가치</th><th class="num">수익률</th><th class="num">실제의 나 대비</th></tr>
         ${rows.map(([label, v, color, note]) => `
           <tr>
             <td><span class="sw" style="background:${color}; display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px;"></span><b>${label}</b>${v === best ? ' <span style="color:var(--accent);">★</span>' : ''}<br><span class="muted small">${note}</span></td>
