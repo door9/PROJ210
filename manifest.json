@@ -1,0 +1,12 @@
+{
+  "name": "1인 펀드",
+  "short_name": "1인 펀드",
+  "description": "매매 판단을 기록하고 채점하는 개인 투자 복기 앱",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f5f4ef",
+  "theme_color": "#0f4c3a",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
