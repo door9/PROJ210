@@ -8,11 +8,30 @@ import { moneyShort } from './chart.js';
 import * as Dbx from './dropbox.js';
 
 // ---------- 홈 ----------
+// 글귀 서랍에서 랜덤 한 문장
+function quoteCard() {
+  const qs = state.quotes || [];
+  if (!qs.length) return '';
+  const q = qs[Math.floor(Math.random() * qs.length)];
+  return `
+    <div class="card quote-card">
+      <div class="q-text">${esc(q.text)}</div>
+      <div class="q-foot">
+        <span class="q-src">${q.source ? '— ' + esc(q.source) : ''}</span>
+        <span class="q-tools">
+          <button class="btn small" data-act="requote" title="다른 글귀 보기">↻</button>
+          <a class="btn small" href="#/quotes">서랍</a>
+        </span>
+      </div>
+    </div>`;
+}
+
 function vHome() {
   if (!state.trades.length) {
     return `
       <div class="view-title">${esc(state.settings.fundName || '1인 펀드')}</div>
       <p class="view-desc">나는 이 펀드의 매니저이고, 유일한 고객도 나다.</p>
+      ${quoteCard()}
       <div class="card">
         <h3>아직 기록이 없습니다</h3>
         <p class="small muted" style="margin:6px 0 0;">
@@ -55,6 +74,7 @@ function vHome() {
   return `
     <div class="view-title">${esc(state.settings.fundName || '1인 펀드')}</div>
     <p class="view-desc">기준일 ${pf.date} · 배당 재투자 가정 · 달러는 당일 환율 환산</p>
+    ${quoteCard()}
     ${alerts.join('')}
     <div class="card hero">
       <div class="row"><span>투입 원금 ${fmtMoney(pf.deposits)}</span></div>
@@ -83,6 +103,7 @@ function vHome() {
     </div>`;
 }
 vHome.bind_ = (root) => {
+  root.querySelector('[data-act=requote]')?.addEventListener('click', render);
   root.querySelector('[data-act=sample]')?.addEventListener('click', () => {
     Store.addSample(state); saveNow(); render(); toast('예시 데이터를 넣었습니다');
   });

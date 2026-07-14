@@ -15,6 +15,7 @@ export function defaultState() {
     diary: [],       // 홀딩 일지
     principles: [],  // 투자 헌법
     letters: [],     // 주주 서한
+    quotes: [],      // 글귀 서랍 (책·자료에서 모은 문장)
     deleted: {},     // tombstone: {id: 삭제시각} — 동기화 시 부활 방지
     pendingSymbols: [], // 시세 파일이 아직 없는 심볼 (기기 로컬, 동기화 안 함)
   };
@@ -99,27 +100,33 @@ export function sampleData() {
     d({ kind: 'no_avg_down', param: null, text: '물타기를 하지 않는다', active: true }),
     d({ kind: 'manual', param: null, text: '매수 전, 이 회사가 10년 뒤에도 존재할 이유를 한 문장으로 쓸 수 있어야 한다', active: true }),
   ];
+  const quotes = [
+    d({ text: '가격은 당신이 지불하는 것이고, 가치는 당신이 얻는 것이다.', source: '워런 버핏' }),
+    d({ text: '주식시장은 인내심 없는 사람의 돈을 인내심 있는 사람에게 옮기는 장치다.', source: '워런 버핏' }),
+  ];
   const letters = [
     { id: uid(), sample: true, period: '2026-Q1', createdAt: Date.now(), updatedAt: Date.now(),
       body: '주주(=나)에게.\n\n이번 분기 삼성전자를 절반 넘게 팔았다. 계획했던 밸류에이션에 도달했기 때문이라고 썼지만, 솔직히는 급등이 무서웠던 것도 있다. 남긴 40주는 계획대로 2026년 말까지 끌고 간다.\n\nSK하이닉스는 4월 폭락 때 팔고 싶었지만 참았다. 참은 것이 이번 분기 가장 잘한 일이다.\n\n다음 분기에는 새 종목을 늘리기보다 지금 가진 것을 공부하는 데 시간을 쓰겠다.' },
   ];
-  return { trades, diary, principles, letters };
+  return { trades, diary, principles, letters, quotes };
 }
+
+const SAMPLE_COLLS = ['trades', 'diary', 'principles', 'letters', 'quotes'];
 
 export function addSample(state) {
   const s = sampleData();
-  state.trades.push(...s.trades);
-  state.diary.push(...s.diary);
-  state.principles.push(...s.principles);
-  state.letters.push(...s.letters);
+  for (const k of SAMPLE_COLLS) {
+    state[k] = state[k] || [];
+    state[k].push(...s[k]);
+  }
 }
 
 export function removeSample(state) {
-  for (const k of ['trades', 'diary', 'principles', 'letters']) {
-    for (const x of state[k].filter(x => x.sample)) removeItem(state, k, x.id);
+  for (const k of SAMPLE_COLLS) {
+    for (const x of (state[k] || []).filter(x => x.sample)) removeItem(state, k, x.id);
   }
 }
 
 export function hasSample(state) {
-  return ['trades', 'diary', 'principles', 'letters'].some(k => state[k].some(x => x.sample));
+  return SAMPLE_COLLS.some(k => (state[k] || []).some(x => x.sample));
 }

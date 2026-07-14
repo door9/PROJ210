@@ -246,6 +246,89 @@ vAI.bind_ = (root) => {
 };
 registerView('ai', vAI);
 
+// ---------- 글귀 서랍 ----------
+function openQuoteEditor(q) {
+  const m = openModal(`
+    <h2>글귀 수정</h2>
+    <label class="fld">문장
+      <textarea id="q-text" style="min-height:110px;">${esc(q.text)}</textarea>
+    </label>
+    <label class="fld" style="margin-top:10px;">출처 (책·저자·자료)
+      <input id="q-src" value="${esc(q.source || '')}">
+    </label>
+    <div class="btn-row" style="justify-content:flex-end;">
+      <button class="btn" data-x="cancel">취소</button>
+      <button class="btn primary" data-x="save">저장</button>
+    </div>`);
+  m.querySelector('[data-x=cancel]').onclick = closeModal;
+  m.querySelector('[data-x=save]').onclick = () => {
+    const text = m.querySelector('#q-text').value.trim();
+    if (!text) { toast('문장이 비어 있습니다'); return; }
+    q.text = text;
+    q.source = m.querySelector('#q-src').value.trim();
+    q.updatedAt = Date.now();
+    saveNow(); closeModal(); render(); toast('저장했습니다');
+  };
+}
+
+function vQuotes() {
+  const qs = [...(state.quotes || [])].sort((a, b) => b.createdAt - a.createdAt);
+  const items = qs.map(q => `
+    <li>
+      <div class="q-text" style="font-size:15px;">${esc(q.text)}</div>
+      <div class="trade-meta">
+        <span class="muted">${q.source ? '— ' + esc(q.source) : ''}</span>
+        ${q.sample ? '<span class="tag warn">예시</span>' : ''}
+        <span style="margin-left:auto; white-space:nowrap;">
+          <button class="btn small" data-edit="${q.id}">수정</button>
+          <button class="btn small danger" data-del="${q.id}">삭제</button>
+        </span>
+      </div>
+    </li>`).join('');
+
+  return `
+    <div class="view-title">글귀 서랍</div>
+    <p class="view-desc">책이나 자료에서 다시 꺼내 읽고 싶은 문장을 모아두면, 홈 화면에서 하나씩 랜덤으로 만나게 됩니다.</p>
+    <div class="card">
+      <h3>새 글귀</h3>
+      <form id="quote-form">
+        <label class="fld">문장
+          <textarea name="text" style="min-height:90px;" placeholder="다시 읽고 싶은 문장을 그대로 옮겨 적기" required></textarea>
+        </label>
+        <label class="fld" style="margin-top:10px;">출처 (책·저자·자료, 선택)
+          <input name="source" placeholder="예: 현명한 투자자, 벤저민 그레이엄">
+        </label>
+        <div class="btn-row" style="justify-content:flex-end;"><button class="btn primary" type="submit">담기</button></div>
+      </form>
+    </div>
+    <div class="card">
+      <h3>모아둔 글귀 ${qs.length ? `(${qs.length})` : ''}</h3>
+      ${items ? `<ul class="list-plain">${items}</ul>` : '<div class="empty">아직 담긴 글귀가 없습니다</div>'}
+    </div>`;
+}
+vQuotes.bind_ = (root) => {
+  root.querySelector('#quote-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const f = e.target;
+    const text = f.text.value.trim();
+    if (!text) return;
+    state.quotes = state.quotes || [];
+    state.quotes.push({ id: uid(), text, source: f.source.value.trim(), createdAt: Date.now(), updatedAt: Date.now() });
+    saveNow(); render(); toast('글귀를 담았습니다');
+  });
+  root.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => {
+    const q = state.quotes.find(x => x.id === b.dataset.edit);
+    if (q) openQuoteEditor(q);
+  }));
+  root.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+    const ok = await confirmModal({ title: '글귀 삭제', body: '이 글귀를 삭제합니다.', okLabel: '삭제', danger: true });
+    if (!ok) return;
+    Store.removeItem(state, 'quotes', b.dataset.del);
+    saveNow(); render();
+  }));
+};
+registerView('quotes', vQuotes);
+
 // ---------- 설정 ----------
 function vSettings() {
   const has = Store.hasSample(state);
@@ -419,6 +502,7 @@ registerView('settings', vSettings);
 function vMore() {
   const items = [
     ['actions', '⚖️', '개입 점수', '매도·물타기 하나하나 채점'],
+    ['quotes', '📚', '글귀 서랍', '책에서 모은 문장, 홈에서 랜덤으로'],
     ['letters', '📜', '주주 서한', '분기마다 나에게 쓰는 운용보고서'],
     ['rules', '📖', '투자 헌법', '원칙 자동 감시와 원칙 검증'],
     ['ai', '🤖', 'AI 복기', '기록 전체를 Claude에게 심문받기'],

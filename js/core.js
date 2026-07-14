@@ -59,7 +59,7 @@ export const NAV = [
 ];
 export const NAV_DESKTOP = [
   ['home', '홈'], ['trades', '기록'], ['worlds', '평행우주'], ['actions', '개입 점수'],
-  ['diary', '일지'], ['letters', '서한'], ['rules', '헌법'], ['ai', 'AI 복기'], ['settings', '설정'],
+  ['diary', '일지'], ['quotes', '글귀'], ['letters', '서한'], ['rules', '헌법'], ['ai', 'AI 복기'], ['settings', '설정'],
 ];
 
 export function currentRoute() {
