@@ -1,6 +1,7 @@
 // 오프라인 셸 캐시. 시세(data/*)는 항상 네트워크 우선.
-const CACHE = 'onefund-v6';
+const CACHE = 'onefund-v7';
 const SHELL = ['.', 'index.html', 'style.css', 'favicon.svg', 'manifest.json',
+  'icon-192.png', 'icon-512.png', 'icon-512-maskable.png', 'apple-touch-icon.png',
   'js/app.js', 'js/core.js', 'js/store.js', 'js/prices.js', 'js/engine.js',
   'js/util.js', 'js/chart.js', 'js/dropbox.js', 'js/sync.js',
   'js/views-main.js', 'js/views-insight.js', 'js/views-write.js'];
