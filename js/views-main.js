@@ -361,7 +361,7 @@ export function openTradeForm(side, existing = null) {
     const newVio = E.checkDraft(baseState, draft);
     if (newVio.length) {
       const ok = await confirmModal({
-        title: '⚖️ 헌법 위반 경고',
+        title: '헌법 위반 경고',
         body: '이 매매는 당신이 정한 원칙과 충돌합니다:\n\n' + newVio.map(v => `· ${v.p.text}\n  (${v.detail})`).join('\n') + '\n\n기록은 막지 않습니다. 다만 위반으로 남습니다.',
         okLabel: '알고도 기록한다',
       });

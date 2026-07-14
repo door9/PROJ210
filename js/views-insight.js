@@ -58,7 +58,7 @@ function vWorlds() {
         <tr><th>세계</th><th class="num">현재 가치</th><th class="num">수익률</th><th class="num">실제 대비</th></tr>
         ${rows.map(([label, v, color, note]) => `
           <tr>
-            <td><span class="sw" style="background:${color}; display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px;"></span><b>${label}</b>${v === best ? ' 🏆' : ''}<br><span class="muted small">${note}</span></td>
+            <td><span class="sw" style="background:${color}; display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px;"></span><b>${label}</b>${v === best ? ' <span style="color:var(--accent);">★</span>' : ''}<br><span class="muted small">${note}</span></td>
             <td class="num">${fmtMoney(v)}</td>
             <td class="num ${pctClass(v / dep - 1)}">${fmtPct(dep > 0 ? v / dep - 1 : null)}</td>
             <td class="num ${pctClass(v - rows[0][1])}">${label === '실제의 나' ? '—' : fmtMoney(v - rows[0][1])}</td>

@@ -1,5 +1,5 @@
 // 화면: 주주 서한, 투자 헌법, AI 복기, 설정, 더보기
-import { state, saveNow, toast, openModal, closeModal, confirmModal, registerView, render, refreshPriceStatus } from './core.js';
+import { state, saveNow, toast, openModal, closeModal, confirmModal, registerView, render, refreshPriceStatus, ICONS } from './core.js';
 import * as Store from './store.js';
 import * as P from './prices.js';
 import * as E from './engine.js';
@@ -75,7 +75,7 @@ function vLetters() {
     <div class="view-title">주주 서한</div>
     <p class="view-desc">분기에 한 번, 내 펀드의 유일한 고객(미래의 나)에게 운용보고서를 씁니다. 재료는 앱이 차려줍니다.</p>
     <div class="card">
-      <h3>이번 분기 — ${q} ${hasCurrent ? '✅ 작성함' : ''}</h3>
+      <h3>이번 분기 — ${q} ${hasCurrent ? '<span style="color:var(--accent);">✓ 작성함</span>' : ''}</h3>
       ${pk ? `
       <div class="tbl-wrap"><table class="tbl">
         <tr><th>기간 수익률(근사)</th><th>코스피</th><th>S&P500</th><th>거래</th><th>위반</th><th>흔들림</th></tr>
@@ -347,7 +347,7 @@ function vSettings() {
       <h3>동기화 (Dropbox)</h3>
       ${Dbx.connected() ? `
         <p class="small muted" style="margin:4px 0 0;">
-          ✅ 연결됨 — 매매 기록·일지·헌법·서한이 내 Dropbox의 앱 전용 폴더에 저장되고 기기 간 동기화됩니다.<br>
+          <span style="color:var(--accent);">✓ 연결됨</span> — 매매 기록·일지·헌법·서한이 내 Dropbox의 앱 전용 폴더에 저장되고 기기 간 동기화됩니다.<br>
           마지막 동기화: ${Sync.lastSync() ? new Date(Sync.lastSync()).toLocaleString('ko-KR') : '아직 없음'}
           ${Sync.lastError ? `<br><span class="down">최근 오류: ${esc(Sync.lastError)}</span>` : ''}
         </p>
@@ -523,20 +523,20 @@ registerView('settings', vSettings);
 // ---------- 더보기 (모바일 메뉴) ----------
 function vMore() {
   const items = [
-    ['worlds', '🌌', '평행우주', '안 팔았다면·지수만 샀다면 지금 얼마인가'],
-    ['actions', '⚖️', '개입 점수', '매도·물타기 하나하나 채점'],
-    ['quotes', '📚', '글귀 서랍', '책에서 모은 문장, 홈에서 랜덤으로'],
-    ['letters', '📜', '주주 서한', '분기마다 나에게 쓰는 운용보고서'],
-    ['rules', '📖', '투자 헌법', '원칙 자동 감시와 원칙 검증'],
-    ['ai', '🤖', 'AI 복기', '기록 전체를 Claude에게 심문받기'],
-    ['settings', '⚙️', '설정', '백업 · 시세 · 예시 데이터'],
+    ['worlds', '평행우주', '안 팔았다면·지수만 샀다면 지금 얼마인가'],
+    ['actions', '개입 점수', '매도·물타기 하나하나 채점'],
+    ['quotes', '글귀 서랍', '책에서 모은 문장, 홈에서 랜덤으로'],
+    ['letters', '주주 서한', '분기마다 나에게 쓰는 운용보고서'],
+    ['rules', '투자 헌법', '원칙 자동 감시와 원칙 검증'],
+    ['ai', 'AI 복기', '기록 전체를 Claude에게 심문받기'],
+    ['settings', '설정', '백업 · 시세 · 예시 데이터'],
   ];
   return `
     <div class="view-title">더보기</div>
     <div class="card"><ul class="list-plain">
-      ${items.map(([id, ico, label, desc]) => `
+      ${items.map(([id, label, desc]) => `
         <li><a href="#/${id}" style="display:flex; gap:12px; align-items:center; text-decoration:none; color:inherit;">
-          <span style="font-size:22px;">${ico}</span>
+          <span class="mico">${ICONS[id]}</span>
           <span><b>${label}</b><br><span class="muted small">${desc}</span></span>
           <span style="margin-left:auto; color:var(--sub);">›</span>
         </a></li>`).join('')}
