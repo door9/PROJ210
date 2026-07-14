@@ -21,6 +21,12 @@ async function init() {
   // 원격 데이터 먼저 병합(연결돼 있으면) → 시세 로드 → 렌더
   if (Dbx.connected()) await Sync.syncNow();
   await P.load(state.settings);
+  // 시세가 생긴 심볼은 미등록 목록에서 자동 제거
+  const pending = state.pendingSymbols.filter(s => !P.has(s));
+  if (pending.length !== state.pendingSymbols.length) {
+    state.pendingSymbols = pending;
+    Store.save(state);
+  }
   refreshPriceStatus();
   render();
   window.addEventListener('hashchange', render);
