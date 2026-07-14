@@ -92,7 +92,7 @@ function vActions() {
       <td><b>${esc(x.t.name || x.t.symbol)}</b><br><span class="muted small">${x.t.date} · ${fmtQty(x.t.qty)}주 @ ${fmtMoney(x.t.price, P.currencyOf(x.t.symbol))}${x.t.sample ? ' · 예시' : ''}</span></td>
       <td class="num ${g2c(x.growth)}">${g2p(x.growth)}</td>
       <td class="num ${g2c(x.benchGrowth)}">${g2p(x.benchGrowth)}</td>
-      <td class="num ${x.delta == null ? 'flat' : pctClass(x.delta)}"><b>${x.delta == null ? '–' : fmtPct(x.delta)}</b></td>
+      <td class="num ${x.delta == null ? 'flat' : pctClass(x.delta)}"><b>${x.delta == null ? '–' : fmtPct(x.delta) + 'P'}</b></td>
     </tr>`).join('');
 
   return `
@@ -120,7 +120,7 @@ function vActions() {
         ${adRows}
       </table></div>
       ${ad.agg.count && ad.agg.avgDelta != null ? `<p class="small" style="margin-bottom:0;">
-        물타기 ${ad.agg.count}회. 그 돈을 그냥 지수에 넣었을 때와 비교해 평균 <b class="${pctClass(ad.agg.avgDelta)}">${fmtPct(ad.agg.avgDelta)}</b>.
+        물타기 ${ad.agg.count}회. 그 돈을 그냥 지수에 넣었을 때와 비교해 평균 <b class="${pctClass(ad.agg.avgDelta)}">${fmtPct(ad.agg.avgDelta)}P</b>.
         ${ad.agg.avgDelta < -0.03 ? '→ 물타기가 평균적으로 <b>지수보다 못한 선택</b>이었습니다.' : ad.agg.avgDelta > 0.03 ? '→ 물타기가 지수보다 나은 결과를 냈습니다.' : ''}
       </p>` : ''}` : '<div class="empty">물타기로 분류된 매수가 없습니다</div>'}
       <p class="hint">물타기 = 이미 보유 중인 종목을 평균 단가보다 싸게 추가 매수한 것. 한국 종목은 코스피, 미국 종목은 S&P500과 비교합니다.</p>

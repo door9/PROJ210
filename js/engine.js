@@ -446,7 +446,7 @@ export function aiPack(state) {
     L.push(`- ${r.sell.date} ${r.sell.name || r.sell.symbol} 매도: 수익률 ${pct(r.ret)}, 평균 보유 ${r.holdDays ? Math.round(r.holdDays) + '일' : '?'}`);
   }
   if (ss.agg.count) L.push(`- 매도 채점(판 뒤 그 주식의 현재까지 변화 평균): ${pct(ss.agg.avgMissed)} → ${ss.agg.avgMissed > 0 ? '평균적으로 판 뒤에 더 올랐다(일찍 파는 경향)' : '평균적으로 판 뒤에 내렸다(매도 판단이 유효)'}`);
-  if (ad.agg.count) L.push(`- 물타기 ${ad.agg.count}회, 지수 대비 평균 ${pct(ad.agg.avgDelta)}`);
+  if (ad.agg.count) L.push(`- 물타기 ${ad.agg.count}회, 지수 대비 평균 ${pct(ad.agg.avgDelta)}P`);
   L.push('');
   L.push('## 흔들렸던 순간들 (홀딩 일지)');
   for (const e of state.diary) L.push(`- ${e.date} ${e.symbol} [${e.urge === 'sell' ? '팔고 싶었다' : '더 사고 싶었다'}] ${e.note}`);
