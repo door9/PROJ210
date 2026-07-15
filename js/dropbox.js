@@ -1,4 +1,4 @@
-// Dropbox 연동 — 1인 펀드 전용 앱(App folder 접근: /앱/<앱이름>/ 폴더에만 접근 가능).
+// Dropbox 연동 — PROJ210 전용 앱(App folder 접근: /앱/<앱이름>/ 폴더에만 접근 가능).
 // PKCE 방식이라 app secret이 필요 없다(공개 코드에 secret을 두지 않아도 됨).
 const CLIENT_ID = 'e3gsucy77ui1dlb';
 const FILE = '/data.json'; // 앱 전용 폴더 기준 경로

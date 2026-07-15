@@ -339,7 +339,7 @@ function vSettings() {
     <div class="card">
       <h3>펀드 이름</h3>
       <form id="name-form" class="btn-row" style="margin:0;">
-        <input name="fundName" value="${esc(state.settings.fundName || '1인 펀드')}" style="flex:1; border:1px solid var(--line); border-radius:10px; padding:9px 10px; background:var(--bg);">
+        <input name="fundName" value="${esc(state.settings.fundName || 'PROJ210')}" style="flex:1; border:1px solid var(--line); border-radius:10px; padding:9px 10px; background:var(--bg);">
         <button class="btn primary" type="submit">저장</button>
       </form>
     </div>
@@ -473,7 +473,7 @@ vSettings.bind_ = (root) => {
   });
   root.querySelector('#name-form').addEventListener('submit', e => {
     e.preventDefault();
-    state.settings.fundName = e.target.fundName.value.trim() || '1인 펀드';
+    state.settings.fundName = e.target.fundName.value.trim() || 'PROJ210';
     state.settings.updatedAt = Date.now();
     saveNow(); render(); toast('저장했습니다');
   });

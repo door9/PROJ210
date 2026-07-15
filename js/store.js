@@ -10,7 +10,7 @@ export function defaultState() {
   return {
     version: 1,
     // settings는 통째로 동기화됨 — 바꿀 때 반드시 updatedAt 갱신
-    settings: { fundName: '1인 펀드', inception: null, ghRepo: '', ghPat: '', updatedAt: 0 },
+    settings: { fundName: 'PROJ210', inception: null, ghRepo: '', ghPat: '', updatedAt: 0 },
     trades: [],      // 매매 기록
     diary: [],       // 홀딩 일지
     principles: [],  // 투자 헌법

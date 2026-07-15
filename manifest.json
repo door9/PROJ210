@@ -1,6 +1,6 @@
 {
-  "name": "1인 펀드",
-  "short_name": "1인 펀드",
+  "name": "PROJ210",
+  "short_name": "PROJ210",
   "description": "매매 판단을 기록하고 채점하는 개인 투자 복기 앱",
   "start_url": ".",
   "display": "standalone",

@@ -107,7 +107,7 @@ function renderNav(route) {
   const dn = document.getElementById('desktop-nav');
   dn.innerHTML = NAV_DESKTOP.map(([id, label]) =>
     `<a href="#/${id}" class="${route === id ? 'active' : ''}">${label}</a>`).join('');
-  document.getElementById('fund-name').textContent = state.settings.fundName || '1인 펀드';
+  document.getElementById('fund-name').textContent = state.settings.fundName || 'PROJ210';
 }
 
 export function refreshPriceStatus() {
