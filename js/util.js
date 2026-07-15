@@ -46,6 +46,16 @@ export function fmtMoney(v, currency = 'KRW') {
   return '₩' + Math.round(v).toLocaleString('ko-KR');
 }
 
+// 억/만 단위 한글 표기: 만 단위로 반올림해 "3억0500만원" 형태 (억은 항상, 만은 4자리 고정)
+export function moneyKorean(v) {
+  if (v == null || isNaN(v)) return '–';
+  const neg = v < 0;
+  const man = Math.round(Math.abs(v) / 1e4); // 만 단위로 반올림 (자리올림 자동 처리)
+  const eok = Math.floor(man / 1e4);
+  const rest = man % 1e4;
+  return (neg ? '-' : '') + eok.toLocaleString('ko-KR') + '억' + String(rest).padStart(4, '0') + '만원';
+}
+
 export function fmtQty(v) {
   return v.toLocaleString('ko-KR', { maximumFractionDigits: 6 });
 }
