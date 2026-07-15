@@ -82,6 +82,27 @@ function capitalFlow(trades, upto) {
   return { cash, netCap };
 }
 
+// 각 매수의 '외부에서 새로 넣은 돈' 부분만 종목·날짜별로 반환(매도 대금으로 충당한 부분 제외).
+// "안 팔았다면" 세계에서, 팔지 않았다면 애초에 없었을 재투자 돈을 빼기 위한 것.
+function externalLots(trades, upto) {
+  const cash = { KRW: 0, USD: 0 };
+  const lots = [];
+  for (const t of trades) {
+    if (t.date > upto) break;
+    const cur = P.currencyOf(t.symbol);
+    if (t.side === 'buy') {
+      const cost = t.price * t.qty + (t.fee || 0);
+      const fromCash = Math.min(cash[cur], cost);
+      cash[cur] -= fromCash;
+      const ext = cost - fromCash;
+      if (ext > 1e-9) lots.push({ symbol: t.symbol, date: t.date, ext, cur });
+    } else {
+      cash[cur] += t.price * t.qty - (t.fee || 0);
+    }
+  }
+  return lots;
+}
+
 // ---- 포트폴리오 ------------------------------------------------------------
 export function portfolio(state, date = null) {
   const d = date || todayStr();
@@ -196,13 +217,12 @@ export function worlds(state) {
     v += (liveCash.KRW || 0) + (P.toKRW(liveCash.USD, 'USD', d) || 0);
     out.actual.push(v);
 
-    // 손 안 댄 나: 매도 무시
+    // 손 안 댄 나: 외부에서 넣은 돈(순 투입)으로 산 것을 한 번도 팔지 않고 그대로 뒀다면.
+    // 매도 대금으로 재매수한 부분은 '팔지 않았다면 애초에 없었을 돈'이라 제외(현금 무한 가정 제거).
     let nv = 0;
-    for (const b of buys) {
-      if (b.date > d) break;
-      const cost = b.price * b.qty + (b.fee || 0);
-      const g = P.growth(b.symbol, b.date, d);
-      nv += P.toKRW(g ? cost * g : cost, P.currencyOf(b.symbol), d) || 0;
+    for (const lot of externalLots(trades, d)) {
+      const g = P.growth(lot.symbol, lot.date, d);
+      nv += P.toKRW(g ? lot.ext * g : lot.ext, lot.cur, d) || 0;
     }
     out.neverSell.push(nv);
 

@@ -64,6 +64,18 @@ function migrate(state) {
     }
     if (t.sample) delete t.sample; // 예시 표시도 정리
   }
+  // 기기별로 저장하던 PIN을 동기화되는 settings로 이전
+  try {
+    const legacyPin = localStorage.getItem('onefund.pinHash');
+    if (legacyPin) {
+      if (!state.settings.pinHash) {
+        state.settings.pinHash = legacyPin;
+        state.settings.updatedAt = Date.now();
+      }
+      save(state);                              // 옛 키를 지우기 전에 반드시 영속화
+      localStorage.removeItem('onefund.pinHash');
+    }
+  } catch { /* localStorage 접근 불가 무시 */ }
 }
 
 export function save(state) {

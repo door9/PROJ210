@@ -21,7 +21,7 @@ function vWorlds() {
   const li = w.dates.length - 1;
   const rows = [
     ['실제의 나', w.actual[li], C.actual, '기록한 그대로. 매도 대금은 현금으로 보관'],
-    ['손 안 댄 나', w.neverSell[li], C.neverSell, '한 번 산 뒤 지금까지 한 번도 팔지 않음'],
+    ['손 안 댄 나', w.neverSell[li], C.neverSell, '내가 넣은 돈으로 산 것을 한 번도 팔지 않고 그대로 뒀다면 (재투자한 매도 대금은 제외)'],
     ['코스피만 산 나', w.kospi[li], C.kospi, '같은 날 같은 금액으로 코스피 지수만 매수'],
     ['S&P500만 산 나', w.sp500[li], C.sp500, '같은 날 같은 금액으로 S&P500만 매수'],
     ['예금만 한 나', w.bank[li], C.bank, `같은 날 같은 금액을 연 ${w.rate}% 예금에 (설정에서 금리 변경)`],

@@ -1,7 +1,8 @@
-// 앱 잠금(PIN). 기기별 저장(localStorage, 동기화 안 함). SHA-256 해시만 저장.
+// 앱 잠금(PIN). PIN 해시를 settings에 저장 → Dropbox로 PC·폰 동기화됨(평문 PIN이 아니라 SHA-256 해시).
 // 주의: 데이터는 브라우저 localStorage에 있으므로 기기에 접근 가능한 사람으로부터 완벽히
 // 막아주지는 못한다(기기 잠금 화면 수준의 가벼운 보호). UI 접근을 가리는 용도.
-const K = 'onefund.pinHash';
+import { state, saveNow } from './core.js';
+
 const SALT = 'proj210.pin.v1';
 
 async function sha(pin) {
@@ -9,10 +10,19 @@ async function sha(pin) {
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-export const hasPin = () => !!localStorage.getItem(K);
-export async function setPin(pin) { localStorage.setItem(K, await sha(pin)); }
-export async function verify(pin) { return !!pin && localStorage.getItem(K) === await sha(pin); }
-export function clearPin() { localStorage.removeItem(K); }
+export const hasPin = () => !!state.settings.pinHash;
+
+export async function setPin(pin) {
+  state.settings.pinHash = await sha(pin);
+  state.settings.updatedAt = Date.now(); // 동기화에서 이 변경이 이기도록
+  saveNow();
+}
+export async function verify(pin) { return !!pin && state.settings.pinHash === await sha(pin); }
+export function clearPin() {
+  delete state.settings.pinHash;
+  state.settings.updatedAt = Date.now();
+  saveNow();
+}
 
 // 앱 시작 시 호출. PIN이 맞을 때까지 화면을 가리고 대기.
 export function showLock() {

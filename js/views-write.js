@@ -429,7 +429,7 @@ function vSettings() {
            <div class="btn-row"><button class="btn" data-x="changepin">PIN 변경</button><button class="btn danger" data-x="clearpin">PIN 해제</button></div>`
         : `<p class="small muted" style="margin:4px 0 0;">앱을 열 때 PIN을 입력하도록 잠글 수 있습니다. 민감한 금융 정보를 가려 줍니다.</p>
            <div class="btn-row"><button class="btn primary" data-x="setpin">PIN 설정</button></div>`}
-      <p class="hint">PIN은 이 기기에만 저장됩니다(PC·폰 각각 설정). 기기 잠금 화면 수준의 가벼운 보호이며, 기기 자체에 접근 가능한 사람으로부터 완벽히 막아 주지는 않습니다.</p>
+      <p class="hint">PIN은 PC·폰 간 동기화됩니다(한 곳에서 설정하면 다른 기기에도 적용). 기기 잠금 화면 수준의 가벼운 보호이며, 기기 자체에 접근 가능한 사람으로부터 완벽히 막아 주지는 않습니다.</p>
     </div>
     <div class="card">
       <h3>회계 가정</h3>
