@@ -52,6 +52,7 @@ function vHome() {
   const pf = E.portfolio(state);
   const w = E.worlds(state);
   const li = w ? w.dates.length - 1 : -1;
+  const ln = E.loanStatus(state);
 
   const alerts = [];
   if (Store.hasSample(state)) alerts.push(`<div class="notice">예시 데이터가 표시되는 중입니다. 설정에서 지울 수 있습니다.</div>`);
@@ -83,6 +84,18 @@ function vHome() {
         ${pf.cashKRW > 0 ? `<span>매도 대금 현금 ${fmtMoney(pf.cashKRW)}</span>` : ''}
       </div>
     </div>
+    ${ln ? `<a href="#/cost" class="card loan-card" style="display:block; text-decoration:none; color:inherit;">
+      <div class="trade-head">
+        <b>대출 이자</b>
+        <span class="muted small">잔액 ${fmtMoney(ln.balance)} · 연 ${ln.rate}%</span>
+        <span class="amt" style="color:var(--warn-ink);">이번 달 ${fmtMoney(ln.monthly)}</span>
+      </div>
+      <div class="trade-meta">
+        <span>누적 이자 ${fmtMoney(ln.cumulative)}</span>
+        <span>이자 차감 후 실질 손익 <b class="${pctClass(ln.netProfit)}">${fmtMoney(ln.netProfit)}</b></span>
+        <span style="margin-left:auto; color:var(--sub);">›</span>
+      </div>
+    </a>` : ''}
     ${w ? `<div class="kpis">
       <div class="kpi"><div class="k">한 번도 안 팔았다면</div><div class="v">${moneyKorean(w.neverSell[li])}</div><div class="s ${pctClass(w.neverSell[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.neverSell[li] - w.actual[li])}</div></div>
       <div class="kpi"><div class="k">코스피만 샀다면</div><div class="v">${moneyKorean(w.kospi[li])}</div><div class="s ${pctClass(w.kospi[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.kospi[li] - w.actual[li])}</div></div>

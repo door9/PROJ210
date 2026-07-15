@@ -64,6 +64,7 @@ export const ICONS = {
   letters: svg('<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M4.5 7.5l7.5 5.5 7.5-5.5"/>'),
   rules: svg('<path d="M4 20h16M6 16.5V10M10 16.5V10M14 16.5V10M18 16.5V10M3.5 10h17L12 3.8 3.5 10z"/>'),
   ai: svg('<path d="M11 4.5l1.4 4.1 4.1 1.4-4.1 1.4L11 15.5l-1.4-4.1-4.1-1.4 4.1-1.4L11 4.5z"/><path d="M18 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z"/>'),
+  cost: svg('<circle cx="12" cy="12" r="8.3"/><path d="M9.2 15.2c.6.8 1.6 1.3 2.8 1.3 1.7 0 2.8-.9 2.8-2.2 0-2.9-5.2-1.6-5.2-4.4 0-1.2 1-2.1 2.6-2.1 1.1 0 2 .5 2.6 1.2"/><path d="M12 6.6v10.8"/>'),
   settings: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.7M12 18.5v2.7M2.8 12h2.7M18.5 12h2.7M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9"/>'),
 };
 
@@ -76,7 +77,7 @@ export const NAV = [
 ];
 export const NAV_DESKTOP = [
   ['home', '홈'], ['trades', '기록'], ['watch', '관심'], ['worlds', '평행우주'], ['actions', '개입 점수'],
-  ['diary', '일지'], ['quotes', '글귀'], ['letters', '서한'], ['rules', '헌법'], ['ai', 'AI 복기'], ['settings', '설정'],
+  ['diary', '일지'], ['cost', '비용'], ['quotes', '글귀'], ['letters', '서한'], ['rules', '헌법'], ['ai', 'AI 복기'], ['settings', '설정'],
 ];
 
 export function currentRoute() {

@@ -18,6 +18,7 @@ export function defaultState() {
     quotes: [],      // 글귀 서랍 (책·자료에서 모은 문장)
     watchlist: [],   // 관심 종목 (안 산 판단의 기록)
     swaps: [],       // 교체 시뮬레이션 (보유 A → 관심 B 가정)
+    loans: [],       // 투자용 대출(마이너스통장 등) 잔액 스냅샷 — 이자 비용 추적
     deleted: {},     // tombstone: {id: 삭제시각} — 동기화 시 부활 방지
     pendingSymbols: [], // 시세 파일이 아직 없는 심볼 (기기 로컬, 동기화 안 함)
   };
@@ -119,10 +120,15 @@ export function sampleData() {
     d({ date: '2025-10-01', fromSymbol: '005930.KS', fromName: '삼성전자', fromQty: 20,
         toSymbol: 'AAPL', toName: 'Apple', note: '삼성전자 일부를 애플로 바꿀까 고민했지만 그대로 두기로 했다.' }),
   ];
-  return { trades, diary, principles, letters, quotes, watchlist, swaps };
+  // 대출 잔액 스냅샷: 잔액이 바뀔 때마다 한 줄. 구간별로 그 잔액·금리로 이자를 계산한다.
+  const loans = [
+    d({ date: '2025-03-01', kind: '마이너스통장', balance: 30000000, rate: 6.5, note: '3월 급락 때 매수 자금으로 인출' }),
+    d({ date: '2025-11-01', kind: '마이너스통장', balance: 20000000, rate: 6.5, note: '일부 상환' }),
+  ];
+  return { trades, diary, principles, letters, quotes, watchlist, swaps, loans };
 }
 
-const SAMPLE_COLLS = ['trades', 'diary', 'principles', 'letters', 'quotes', 'watchlist', 'swaps'];
+const SAMPLE_COLLS = ['trades', 'diary', 'principles', 'letters', 'quotes', 'watchlist', 'swaps', 'loans'];
 
 export function addSample(state) {
   const s = sampleData();

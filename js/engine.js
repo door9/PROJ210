@@ -384,6 +384,45 @@ export function swapRows(state) {
   });
 }
 
+// ---- 투자 비용: 대출(마이너스통장) 이자 ----------------------------------------
+// loans: 잔액 스냅샷 [{date, balance, rate(연%), kind, note}]. 각 스냅샷은 그 날부터
+// 다음 스냅샷(없으면 오늘)까지 유효한 잔액·금리로 본다. 이자는 일할 계산(잔액×연율×일수/365).
+export function loanStatus(state) {
+  const loans = [...(state.loans || [])].sort((a, b) => a.date < b.date ? -1 : 1);
+  if (!loans.length) return null;
+  const today = todayStr();
+  const cur = loans[loans.length - 1];
+  const monthly = cur.balance * (cur.rate / 100) / 12;
+  const daily = cur.balance * (cur.rate / 100) / 365;
+
+  let cumulative = 0;
+  const segs = [];
+  for (let i = 0; i < loans.length; i++) {
+    const from = loans[i].date;
+    const to = (i + 1 < loans.length) ? loans[i + 1].date : today;
+    const days = Math.max(0, daysBetween(from, to));
+    const interest = loans[i].balance * (loans[i].rate / 100) * days / 365;
+    cumulative += interest;
+    segs.push({ ...loans[i], to, days, interest });
+  }
+
+  // 이자 비용을 반영한 실질 손익 + 레버리지가 값을 하는지(펀드 연환산 수익률 vs 대출 금리)
+  const pf = portfolio(state, today);
+  const trades = sortedTrades(state);
+  const fundStart = trades.length ? trades[0].date : loans[0].date;
+  const fundDays = Math.max(1, daysBetween(fundStart, today));
+  const annualized = (pf.ret != null && pf.deposits > 0)
+    ? Math.pow(1 + pf.ret, 365 / fundDays) - 1 : null;
+
+  return {
+    loans, current: cur, balance: cur.balance, rate: cur.rate,
+    monthly, daily, cumulative, segs, start: loans[0].date, today,
+    profit: pf.profit, netProfit: pf.profit - cumulative,
+    fundRet: pf.ret, annualized,
+    beatsHurdle: annualized != null ? annualized > cur.rate / 100 : null,
+  };
+}
+
 // ---- 주주 서한 데이터 팩 -------------------------------------------------------
 export function letterPack(state, period) {
   const today = todayStr();
@@ -471,6 +510,14 @@ export function aiPack(state) {
   }
   if (!(state.swaps || []).length) L.push('- (없음)');
   L.push('');
+  const ln = loanStatus(state);
+  if (ln) {
+    L.push('## 투자 비용 (대출 이자)');
+    L.push(`- 현재 대출 잔액 ${fmtMoney(ln.balance)} (연 ${ln.rate}%), 이번 달 이자 약 ${fmtMoney(ln.monthly)}`);
+    L.push(`- ${ln.start} 이후 누적 이자 약 ${fmtMoney(ln.cumulative)} → 이자 차감 후 실질 손익 ${fmtMoney(ln.netProfit)} (명목 ${fmtMoney(ln.profit)})`);
+    if (ln.annualized != null) L.push(`- 펀드 연환산 수익률 약 ${pct(ln.annualized)} vs 대출 금리 ${ln.rate}% → 레버리지가 ${ln.beatsHurdle ? '값을 하는 중' : '비용을 못 넘고 있음'}`);
+    L.push('');
+  }
   L.push('## 나의 투자 헌법과 위반');
   for (const p of state.principles.filter(p => p.active)) L.push(`- ${p.text}`);
   for (const v of vio) L.push(`  - 위반: ${v.trade.date} ${v.trade.name || v.trade.symbol} — ${v.detail}`);
