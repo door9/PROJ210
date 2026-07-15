@@ -62,6 +62,26 @@ function lotValue(lot, date) {
   return { cur: P.currencyOf(lot.t.symbol), cost, value: g ? cost * g : cost, hasPrice: !!g };
 }
 
+// 통화별 순 투입 원금·잔여 현금. 매수는 같은 통화의 매도 대금(현금)으로 먼저 충당하므로
+// 팔고 다시 사는 것이 원금·현금을 부풀리지 않는다(재투자분 이중계상 방지). trades는 날짜순.
+function capitalFlow(trades, upto) {
+  const cash = { KRW: 0, USD: 0 };
+  const netCap = { KRW: 0, USD: 0 };
+  for (const t of trades) {
+    if (t.date > upto) break;
+    const cur = P.currencyOf(t.symbol);
+    if (t.side === 'buy') {
+      const cost = t.price * t.qty + (t.fee || 0);
+      const fromCash = Math.min(cash[cur], cost);
+      cash[cur] -= fromCash;
+      netCap[cur] += cost - fromCash;
+    } else {
+      cash[cur] += t.price * t.qty - (t.fee || 0);
+    }
+  }
+  return { cash, netCap };
+}
+
 // ---- 포트폴리오 ------------------------------------------------------------
 export function portfolio(state, date = null) {
   const d = date || todayStr();
@@ -88,20 +108,35 @@ export function portfolio(state, date = null) {
   rows.forEach(r => r.weight = investedKRW > 0 ? (r.valueKRW || 0) / investedKRW : 0);
   rows.sort((a, b) => (b.valueKRW || 0) - (a.valueKRW || 0));
 
-  // 현금(매도 대금 누적) 및 투입 원금
-  const cash = { KRW: 0, USD: 0 };
-  for (const r of realized) cash[P.currencyOf(r.sell.symbol)] += r.proceeds;
-  let deposits = 0;
-  for (const t of trades) {
-    if (t.side !== 'buy' || t.date > d) continue;
-    deposits += P.toKRW(t.price * t.qty + (t.fee || 0), P.currencyOf(t.symbol), t.date) || 0;
+  // 통화별 순 투입 원금·잔여 현금 (투입 원금은 환산하지 않고 통화 그대로 집계)
+  const { cash, netCap } = capitalFlow(trades, d);
+
+  // 보유 종목 평가액(통화별, 현지 통화)
+  const hold = { KRW: 0, USD: 0 };
+  for (const r of rows) hold[r.cur] = (hold[r.cur] || 0) + r.value;
+
+  const fx = P.fxOn(d);
+  // 통화별 슬리브(보유 + 잔여현금) 수익률 — 환율 개입 없이 통화 내부에서만 계산
+  const sleeves = {};
+  for (const cur of ['KRW', 'USD']) {
+    const value = (hold[cur] || 0) + cash[cur];
+    const cost = netCap[cur];
+    sleeves[cur] = { cost, value, ret: cost > 0 ? value / cost - 1 : null, has: cost > 0 || value > 1e-6 };
   }
+
   const cashKRW = cash.KRW + (P.toKRW(cash.USD, 'USD', d) || 0);
   const totalKRW = investedKRW + cashKRW;
+  // 합산 원가(현재 환율 환산) → 합산 수익률은 환율 손익을 제외한 순수 자산 성과
+  // (환전 시점 환율을 추적하지 않으므로 실제 환차익은 계산 불가 → 원가·평가를 같은 현재 환율로 환산)
+  const costKRWnow = netCap.KRW + (P.toKRW(netCap.USD, 'USD', d) || 0);
+
   return {
-    date: d, rows, cash, cashKRW, investedKRW, totalKRW, deposits,
-    profit: totalKRW - deposits,
-    ret: deposits > 0 ? (totalKRW - deposits) / deposits : null,
+    date: d, rows, cash, cashKRW, investedKRW, totalKRW, fx, sleeves,
+    depositKRW: netCap.KRW, depositUSD: netCap.USD,
+    holdKRW: hold.KRW || 0, holdUSD: hold.USD || 0, cashUSD: cash.USD,
+    deposits: costKRWnow,           // 합산 원가(현재 환율) — 단일 KRW 지표 소비자용
+    profit: totalKRW - costKRWnow,  // 합산 손익(환율 영향 제외)
+    ret: costKRWnow > 0 ? (totalKRW - costKRWnow) / costKRWnow : null,
     realized,
   };
 }
@@ -150,14 +185,15 @@ export function worlds(state) {
     out.deposits.push(dep);
     out.bank.push(bank);
 
-    // 실제의 나
-    const { open, realized } = replay(trades, d);
+    // 실제의 나 = 보유 종목 평가액 + 잔여 현금(재투자분은 이미 보유에 반영되므로 이중계상 금지)
+    const { open } = replay(trades, d);
     let v = 0;
     for (const lot of open) {
       const lv = lotValue(lot, d);
       v += P.toKRW(lv.value, lv.cur, d) || 0;
     }
-    for (const r of realized) v += P.toKRW(r.proceeds, P.currencyOf(r.sell.symbol), r.sell.date <= d ? d : r.sell.date) || 0;
+    const { cash: liveCash } = capitalFlow(trades, d);
+    v += (liveCash.KRW || 0) + (P.toKRW(liveCash.USD, 'USD', d) || 0);
     out.actual.push(v);
 
     // 손 안 댄 나: 매도 무시
@@ -465,7 +501,10 @@ export function aiPack(state) {
   L.push(`생성일: ${todayStr()}  / 기준통화: KRW (달러 자산은 해당일 환율 환산)`);
   L.push('');
   L.push('## 펀드 현황');
-  L.push(`- 투입 원금: ${fmtMoney(pf.deposits)}  / 현재 가치: ${fmtMoney(pf.totalKRW)} (수익률 ${pct(pf.ret)})`);
+  const depStr = [pf.depositKRW > 0 ? fmtMoney(pf.depositKRW) : null, pf.depositUSD > 0 ? fmtMoney(pf.depositUSD, 'USD') : null].filter(Boolean).join(' + ') || fmtMoney(0);
+  const retStr = [pf.sleeves.KRW.has ? `원화 ${pct(pf.sleeves.KRW.ret)}` : null, pf.sleeves.USD.has ? `달러 ${pct(pf.sleeves.USD.ret)}` : null].filter(Boolean).join(', ');
+  L.push(`- 투입 원금: ${depStr} (통화별 분리) / 현재 가치: ${fmtMoney(pf.totalKRW)} (현재 환율 환산 합계)`);
+  L.push(`- 수익률: ${retStr}${pf.sleeves.KRW.has && pf.sleeves.USD.has ? ` / 합산 ${pct(pf.ret)}(환율 영향 제외)` : ''}`);
   if (w) {
     const last = w.dates.length - 1;
     L.push(`- 평행우주(같은 매수를 했을 때의 현재 가치): 실제 ${fmtMoney(w.actual[last])} / 한 번도 안 팔았다면 ${fmtMoney(w.neverSell[last])} / 코스피만 샀다면 ${fmtMoney(w.kospi[last])} / S&P500만 샀다면 ${fmtMoney(w.sp500[last])} / 정기예금(연 ${w.rate}%)만 했다면 ${fmtMoney(w.bank[last])}`);

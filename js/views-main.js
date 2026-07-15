@@ -67,9 +67,18 @@ function vHome() {
     <tr>
       <td><b>${esc(r.name)}</b><br><span class="muted small">${esc(r.symbol)}</span></td>
       <td class="num">${fmtQty(r.qty)}주</td>
-      <td class="num">${fmtMoney(r.valueKRW)}<br><span class="muted small">${(r.weight * 100).toFixed(1)}%</span></td>
+      <td class="num">${fmtMoney(r.value, r.cur)}<br><span class="muted small">${(r.weight * 100).toFixed(1)}%</span></td>
       <td class="num ${pctClass(r.ret)}">${fmtPct(r.ret)}</td>
     </tr>`).join('');
+
+  // 투입 원금·수익률: 통화별로 분리 (달러는 환산하지 않고 그대로)
+  const sK = pf.sleeves.KRW, sU = pf.sleeves.USD;
+  const depStr = [pf.depositKRW > 0 ? fmtMoney(pf.depositKRW) : null,
+                  pf.depositUSD > 0 ? fmtMoney(pf.depositUSD, 'USD') : null].filter(Boolean).join(' + ') || fmtMoney(0);
+  const retParts = [];
+  if (sK.has && sK.ret != null) retParts.push(`원화 <b class="${pctClass(sK.ret)}">${fmtPct(sK.ret)}</b>`);
+  if (sU.has && sU.ret != null) retParts.push(`달러 <b class="${pctClass(sU.ret)}">${fmtPct(sU.ret)}</b>`);
+  const bothCur = sK.has && sU.has;
 
   return `
     <div class="view-title">${esc(state.settings.fundName || 'PROJ210')}</div>
@@ -77,12 +86,14 @@ function vHome() {
     ${quoteCard()}
     ${alerts.join('')}
     <div class="card hero">
-      <div class="row"><span>투입 원금 ${fmtMoney(pf.deposits)}</span></div>
+      <div class="row"><span>투입 원금 ${depStr}</span></div>
       <div class="big">${fmtMoney(pf.totalKRW)}</div>
       <div class="row">
-        <span class="${pctClass(pf.ret)}">${fmtMoney(pf.profit)} (${fmtPct(pf.ret)})</span>
-        ${pf.cashKRW > 0 ? `<span>매도 대금 현금 ${fmtMoney(pf.cashKRW)}</span>` : ''}
+        <span>${retParts.join(' · ')}</span>
+        ${bothCur && pf.ret != null ? `<span class="muted">· 합산 <b class="${pctClass(pf.ret)}">${fmtPct(pf.ret)}</b> (환율 영향 제외)</span>` : ''}
       </div>
+      ${bothCur ? `<div class="row muted small">현재 평가액: 원화 ${fmtMoney(pf.holdKRW + pf.cash.KRW)} + 달러 ${fmtMoney(pf.holdUSD + pf.cashUSD, 'USD')}${pf.fx ? ` · 환율 ₩${Math.round(pf.fx).toLocaleString()}` : ''}</div>` : ''}
+      ${pf.cashKRW > 1 ? `<div class="row muted small">매도 대금 현금 ${fmtMoney(pf.cashKRW)}</div>` : ''}
     </div>
     ${ln ? `<a href="#/cost" class="card loan-card" style="display:block; text-decoration:none; color:inherit;">
       <div class="trade-head">
