@@ -31,6 +31,18 @@ async function init() {
   render();
   window.addEventListener('hashchange', render);
   if (justConnected) toast('Dropbox에 연결됐습니다. 이제 기기 간 동기화됩니다.');
+
+  // 정규장이 열린 시장이 있으면 백그라운드로 최신 시세 갱신을 요청하고,
+  // 워크플로가 끝날 즈음(약 40초 뒤) 조용히 다시 불러와 화면을 갱신한다.
+  // 화면은 즉시 기존 데이터로 그려지므로 이 요청이 첫 로딩을 지연시키지 않는다.
+  P.maybeRefreshLive(state.settings).then(triggered => {
+    if (!triggered) return;
+    setTimeout(async () => {
+      await P.load(state.settings);
+      refreshPriceStatus();
+      render();
+    }, 40000);
+  }).catch(() => {});
 }
 
 init();

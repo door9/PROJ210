@@ -20,8 +20,10 @@
 - 바닐라 JS PWA (빌드 없음). **이 공개 저장소에는 앱 코드만 있다** — 매매 기록·종목명 등 개인 데이터는 없음.
 - 사용자 데이터(매매·일지·헌법·서한): 브라우저 localStorage + **본인 Dropbox**(전용 앱 폴더의 `data.json`) 동기화.
   기기 간 병합은 항목별 updatedAt 엄격 비교(로컬이 확실히 새것일 때만 로컬 우선) + 삭제 tombstone.
-- 시세·종목 목록: **비공개 저장소**(one-fund-data)에 보관. 앱은 개인 접근 토큰(PAT)으로 GitHub API를 통해 읽고,
-  새 종목 기록 시 tickers.json 커밋 + 갱신 워크플로 실행까지 자동. 갱신은 매일 07:10·16:10 KST.
+- 시세·종목 목록: **비공개 저장소**(PROJ210-data)에 보관. 앱은 개인 접근 토큰(PAT)으로 GitHub API를 통해 읽고,
+  새 종목 기록 시 tickers.json 커밋 + 갱신 워크플로 실행까지 자동.
+  갱신: 정규장이 열려 있는 시장은 앱을 열 때마다(최소 2분 간격) 자동 갱신 트리거, 마감된 시장은 최근 종가 유지.
+  안전망으로 매일 07:10·16:10 KST에도 자동 갱신(휴일 캘린더는 반영하지 않음 — 휴장일엔 그대로 재요청되지만 결과는 무해).
 - 로컬 개발: `data/` 폴더가 있으면 폴백으로 사용(.gitignore 처리, `python scripts/fetch_prices.py 심볼`로 생성).
 
 ### 회계 가정 (engine.js)
@@ -38,7 +40,7 @@ index.html  style.css  manifest.json  sw.js  favicon.svg
 js/  app.js(진입) core.js(라우터·모달) store.js(상태·예시데이터) prices.js(시세 조회: 비공개저장소→로컬 폴백)
      dropbox.js(OAuth·파일) sync.js(병합 동기화) engine.js(포트폴리오·평행우주·개입점수·헌법·데이터팩)
      chart.js(SVG차트) views-main.js(홈·기록) views-insight.js(평행우주·개입점수·일지) views-write.js(서한·헌법·AI·설정)
-scripts/fetch_prices.py  (로컬 개발용 — 운영 수집은 one-fund-data 저장소의 워크플로)
+scripts/fetch_prices.py  (로컬 개발용 — 운영 수집은 PROJ210-data 저장소의 워크플로)
 ```
 
 ## 로컬 실행

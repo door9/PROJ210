@@ -73,6 +73,15 @@ export async function ghTest(cfg) {
   }
 }
 
+// 시세 갱신 워크플로 즉시 실행 요청 (실패해도 다음 정기 갱신에 포함되므로 무시)
+async function dispatchRefresh(cfg) {
+  await fetch(`https://api.github.com/repos/${cfg.ghRepo}/actions/workflows/prices.yml/dispatches`, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + cfg.ghPat, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ref: 'main' }),
+  });
+}
+
 // 새 종목을 비공개 저장소 tickers.json에 추가하고 시세 갱신 워크플로 실행
 export async function registerTicker(cfg, symbol) {
   if (!ghReady(cfg)) throw new Error('GitHub 설정 없음');
@@ -91,14 +100,46 @@ export async function registerTicker(cfg, symbol) {
     });
     if (!put.ok) throw new Error('tickers.json 갱신 실패 ' + put.status);
   }
-  // 시세 갱신 워크플로 즉시 실행 (실패해도 다음 정기 갱신에 포함되므로 무시)
-  try {
-    await fetch(`https://api.github.com/repos/${cfg.ghRepo}/actions/workflows/prices.yml/dispatches`, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + cfg.ghPat, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ref: 'main' }),
-    });
-  } catch { /* cron이 처리 */ }
+  try { await dispatchRefresh(cfg); } catch { /* cron이 처리 */ }
+}
+
+// ---- 정규장 시간 판정 (Intl 타임존 변환 — DST 자동 처리) ----
+function nowInZone(timeZone) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone, hour12: false, weekday: 'short', hour: '2-digit', minute: '2-digit' })
+      .formatToParts(new Date()).map(p => [p.type, p.value])
+  );
+  return { weekday: parts.weekday, minutesOfDay: parseInt(parts.hour, 10) * 60 + parseInt(parts.minute, 10) };
+}
+
+function isOpen(timeZone, openMin, closeMin) {
+  const { weekday, minutesOfDay } = nowInZone(timeZone);
+  if (weekday === 'Sat' || weekday === 'Sun') return false;
+  return minutesOfDay >= openMin && minutesOfDay <= closeMin;
+}
+
+// 한국(09:00–15:30 KST)·미국(9:30–16:00 ET) 정규장 개장 여부.
+// 거래소 휴일 캘린더는 반영하지 않음 — 휴장일에 갱신 요청이 가도 결과는 그대로 최근 종가라 무해함.
+export function marketStatus() {
+  return {
+    kr: isOpen('Asia/Seoul', 9 * 60, 15 * 60 + 30),
+    us: isOpen('America/New_York', 9 * 60 + 30, 16 * 60),
+  };
+}
+
+const K_LAST_TRIGGER = 'onefund.lastPriceTrigger';
+const REFRESH_MIN_GAP_MS = 2 * 60 * 1000; // 같은 기기에서 최소 2분 간격
+
+// 앱을 열 때 호출: 정규장이 열린 시장이 하나라도 있으면(그리고 최근에 요청한 적 없으면) 즉시 갱신 트리거.
+// 두 시장 다 마감 상태면 이미 확정 종가를 보유하고 있으므로 트리거하지 않음.
+export async function maybeRefreshLive(cfg) {
+  if (!ghReady(cfg)) return false;
+  const { kr, us } = marketStatus();
+  if (!kr && !us) return false;
+  const last = parseInt(localStorage.getItem(K_LAST_TRIGGER) || '0', 10);
+  if (Date.now() - last < REFRESH_MIN_GAP_MS) return false;
+  localStorage.setItem(K_LAST_TRIGGER, String(Date.now()));
+  try { await dispatchRefresh(cfg); return true; } catch { return false; }
 }
 
 export const has = sym => map.has(sym);

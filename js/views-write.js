@@ -370,7 +370,7 @@ function vSettings() {
       </p>
       <form id="gh-form" class="form-grid" style="margin-top:10px;">
         <label class="fld">저장소
-          <input name="ghRepo" placeholder="door9/one-fund-data" value="${esc(state.settings.ghRepo || 'door9/one-fund-data')}">
+          <input name="ghRepo" placeholder="door9/PROJ210-data" value="${esc(state.settings.ghRepo || 'door9/PROJ210-data')}">
         </label>
         <label class="fld">개인 접근 토큰 (PAT)
           <input name="ghPat" type="password" placeholder="${state.settings.ghPat ? '저장됨 (변경 시에만 입력)' : 'github_pat_...'}" autocomplete="off">
@@ -387,7 +387,9 @@ function vSettings() {
         <button class="btn small primary" data-x="regpending">미등록 종목 시세 등록 요청</button>
         <button class="btn small" data-x="clearpending">목록 비우기</button>
       </div>` : ''}
-      <p class="hint">새 종목을 기록하면 자동으로 등록을 요청하고, 몇 분 내 시세가 채워집니다. 정기 갱신은 매일 07:10·16:10(한국시간).</p>
+      <p class="hint">새 종목을 기록하면 자동으로 등록을 요청하고, 몇 분 내 시세가 채워집니다.
+      갱신: 한국(09:00–15:30)·미국(밤 시간대, 정규장 9:30–16:00 ET) 중 정규장이 열려 있는 시장은 앱을 열 때마다 자동 갱신,
+      마감된 시장은 최근 종가를 그대로 사용합니다. 안전망으로 매일 07:10·16:10(한국시간)에도 갱신됩니다.</p>
     </div>
     <div class="card">
       <h3>예시 데이터</h3>
