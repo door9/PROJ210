@@ -87,7 +87,7 @@ function vHome() {
     ${ln ? `<a href="#/cost" class="card loan-card" style="display:block; text-decoration:none; color:inherit;">
       <div class="trade-head">
         <b>대출 이자</b>
-        <span class="muted small">잔액 ${fmtMoney(ln.balance)} · 연 ${ln.rate}%</span>
+        <span class="muted small">${ln.openAccts.length}건 · 잔액 ${fmtMoney(ln.balance)} · 평균 연 ${ln.wRate.toFixed(2)}%</span>
         <span class="amt" style="color:var(--warn-ink);">이번 달 ${fmtMoney(ln.monthly)}</span>
       </div>
       <div class="trade-meta">

@@ -429,16 +429,18 @@ registerView('diary', vDiary);
 function openLoanModal(existing) {
   const l = existing || {};
   const m = openModal(`
-    <h2>${existing ? '대출 기록 수정' : '대출 잔액 기록'}</h2>
-    <p class="small muted" style="margin-top:-6px;">잔액이 바뀔 때마다(인출·상환·금리 변경) 한 줄씩 남기면, 구간별로 이자가 자동 계산됩니다.</p>
+    <h2>${existing ? '대출 계좌 수정' : '대출 계좌 추가'}</h2>
+    <p class="small muted" style="margin-top:-6px;">대출 계좌마다 한 건씩 등록하세요. 각 계좌는 시작일부터 (상환일 또는) 지금까지 따로따로 이자가 쌓입니다.</p>
     <form id="loan-form">
       <div class="form-grid">
-        <label class="fld">날짜<input type="date" name="date" max="${todayStr()}" value="${l.date || todayStr()}" required></label>
-        <label class="fld">종류<input name="kind" placeholder="마이너스통장" value="${esc(l.kind || '마이너스통장')}"></label>
-        <label class="fld">이 시점의 대출 잔액 (원)<input type="number" name="balance" min="0" step="any" inputmode="numeric" value="${l.balance ?? ''}" required></label>
+        <label class="fld full">계좌 이름 / 종류<input name="name" placeholder="예: 마이너스통장, ○○은행 신용대출" value="${esc(l.name || l.kind || '')}" required></label>
+        <label class="fld">현재 잔액 (원)<input type="number" name="balance" min="0" step="any" inputmode="numeric" value="${l.balance ?? ''}" required></label>
         <label class="fld">연 이자율 (%)<input type="number" name="rate" min="0" step="any" inputmode="decimal" value="${l.rate ?? ''}" required></label>
+        <label class="fld">대출 시작일<input type="date" name="startDate" max="${todayStr()}" value="${l.startDate || l.date || todayStr()}" required></label>
+        <label class="fld">상환 완료일 (선택)<input type="date" name="endDate" max="${todayStr()}" value="${l.endDate || ''}"></label>
         <label class="fld full">메모 (선택)<input name="note" value="${esc(l.note || '')}"></label>
       </div>
+      <p class="hint" style="margin:2px 0 0;">상환 완료일을 비워두면 "보유 중"으로 보고 오늘까지 이자를 계산합니다. 다 갚았다면 그 날짜를 넣으면 그날로 이자가 멈춥니다.</p>
       <div class="btn-row" style="justify-content:flex-end;">
         <button type="button" class="btn" data-x="cancel">취소</button>
         <button type="submit" class="btn primary">저장</button>
@@ -450,11 +452,17 @@ function openLoanModal(existing) {
     const f = e.target;
     const balance = parseFloat(f.balance.value);
     const rate = parseFloat(f.rate.value);
+    const name = f.name.value.trim();
+    const endDate = f.endDate.value || null;
+    if (!name) { toast('계좌 이름을 입력하세요'); return; }
     if (isNaN(balance) || balance < 0 || isNaN(rate) || rate < 0) { toast('잔액과 금리를 확인하세요'); return; }
+    if (endDate && endDate < f.startDate.value) { toast('상환일이 시작일보다 빠릅니다'); return; }
+    const fields = { name, balance, rate, startDate: f.startDate.value, endDate, note: f.note.value.trim(), updatedAt: Date.now() };
     if (existing) {
-      Object.assign(existing, { date: f.date.value, kind: f.kind.value.trim(), balance, rate, note: f.note.value.trim(), updatedAt: Date.now() });
+      delete existing.kind; delete existing.date; // 옛 필드 정리
+      Object.assign(existing, fields);
     } else {
-      state.loans.push({ id: uid(), date: f.date.value, kind: f.kind.value.trim(), balance, rate, note: f.note.value.trim(), createdAt: Date.now(), updatedAt: Date.now() });
+      state.loans.push({ id: uid(), ...fields, createdAt: Date.now() });
     }
     saveNow(); closeModal(); render(); toast('저장했습니다');
   });
@@ -467,24 +475,29 @@ function vCost() {
       <div class="view-title">투자 비용</div>
       <p class="view-desc">빌린 돈으로 투자한다면 그 이자도 엄연한 비용입니다. 수익이 이자를 넘어야 레버리지가 값을 합니다.</p>
       <div class="card">
-        <h3>대출 기록이 없습니다</h3>
-        <p class="small muted" style="margin:6px 0 0;">마이너스통장 등으로 투자 자금을 빌렸다면 잔액과 금리를 기록해 두세요. 매달 나가는 이자와 지금까지 쌓인 비용, 그리고 수익이 그 비용을 넘고 있는지를 보여줍니다.</p>
-        <div class="btn-row"><button class="btn primary" data-x="add">대출 잔액 기록</button></div>
+        <h3>대출 계좌가 없습니다</h3>
+        <p class="small muted" style="margin:6px 0 0;">마이너스통장·신용대출 등 투자 자금을 빌린 계좌를 등록하세요. 계좌가 여러 개면 각각 등록하면 됩니다. 매달 나가는 이자와 지금까지 쌓인 비용, 수익이 그 비용을 넘고 있는지를 합산해 보여줍니다.</p>
+        <div class="btn-row"><button class="btn primary" data-x="add">대출 계좌 추가</button></div>
       </div>`;
   }
 
-  const segItems = [...ln.segs].reverse().map(s => `
+  const acctItems = ln.accounts.map(a => `
     <li>
       <div class="trade-head">
-        <b>${fmtMoney(s.balance)}</b> <span class="muted small">연 ${s.rate}%${s.kind ? ' · ' + esc(s.kind) : ''}</span>
-        <span class="dt muted small">${s.date} ~ ${s.to === ln.today ? '현재' : s.to} (${s.days}일)${s.sample ? ' · 예시' : ''}</span>
-        <span class="amt small">이자 ${fmtMoney(s.interest)}</span>
+        <b>${esc(a.name)}</b>
+        <span class="muted small">${fmtMoney(a.balance)} · 연 ${a.rate}%</span>
+        ${a.open ? '' : '<span class="tag">상환 완료</span>'}${a.sample ? ' <span class="tag warn">예시</span>' : ''}
+        <span class="amt small" style="${a.open ? 'color:var(--warn-ink);' : ''}">${a.open ? '이번 달 ' + fmtMoney(a.monthly) : '—'}</span>
       </div>
-      ${s.note ? `<div class="trade-body">${esc(s.note)}</div>` : ''}
-      <div class="trade-meta"><span style="margin-left:auto; white-space:nowrap;">
-        <button class="btn small" data-edit="${s.id}">수정</button>
-        <button class="btn small danger" data-del="${s.id}">삭제</button>
-      </span></div>
+      <div class="trade-meta">
+        <span>${a.startDate} ~ ${a.open ? '현재' : a.endDate} (${a.days}일)</span>
+        <span>누적 이자 ${fmtMoney(a.interest)}</span>
+        <span style="margin-left:auto; white-space:nowrap;">
+          <button class="btn small" data-edit="${a.id}">수정</button>
+          <button class="btn small danger" data-del="${a.id}">삭제</button>
+        </span>
+      </div>
+      ${a.note ? `<div class="trade-body">${esc(a.note)}</div>` : ''}
     </li>`).join('');
 
   return `
@@ -492,7 +505,7 @@ function vCost() {
     <p class="view-desc">빌린 돈으로 투자한다면 그 이자도 엄연한 비용입니다. 수익이 이자를 넘어야 레버리지가 값을 합니다.</p>
 
     <div class="card hero">
-      <div class="row"><span>대출 잔액 ${fmtMoney(ln.balance)} · 연 ${ln.rate}%</span></div>
+      <div class="row"><span>대출 ${ln.openAccts.length}건 · 총 잔액 ${fmtMoney(ln.balance)} · 평균 연 ${ln.wRate.toFixed(2)}%</span></div>
       <div class="big" style="color:var(--warn-ink);">이번 달 이자 ${fmtMoney(ln.monthly)}</div>
       <div class="row"><span>하루 ${fmtMoney(ln.daily)}씩 나가는 셈입니다</span></div>
     </div>
@@ -508,7 +521,7 @@ function vCost() {
       <h3>레버리지가 값을 하고 있나</h3>
       <p class="small" style="margin:4px 0 0;">
         펀드 수익률을 연으로 환산하면 약 <b class="${pctClass(ln.annualized)}">${fmtPct(ln.annualized)}</b>,
-        대출 금리는 <b>${ln.rate}%</b>입니다.
+        평균 대출 금리는 <b>${ln.wRate.toFixed(2)}%</b>입니다.
         ${ln.beatsHurdle
           ? '→ 빌린 돈이 이자보다 <b class="up">더 벌고 있습니다</b>. 레버리지가 값을 하는 중입니다.'
           : '→ 아직 <b class="down">이자를 넘지 못하고</b> 있습니다. 빌린 돈이 이자만큼도 못 벌면 레버리지는 손해를 키웁니다.'}
@@ -517,10 +530,10 @@ function vCost() {
     </div>` : ''}
 
     <div class="card">
-      <h3>대출 기록</h3>
-      <div class="btn-row" style="margin:0 0 6px;"><button class="btn primary" data-x="add">잔액 변동 기록</button></div>
-      <ul class="list-plain">${segItems}</ul>
-      <p class="hint">잔액이 바뀐 시점마다 한 줄씩. 각 줄은 다음 줄(없으면 오늘)까지 그 잔액·금리로 이자가 계산됩니다. 첫 줄 이전의 이자는 집계되지 않습니다.</p>
+      <h3>대출 계좌</h3>
+      <div class="btn-row" style="margin:0 0 6px;"><button class="btn primary" data-x="add">대출 계좌 추가</button></div>
+      <ul class="list-plain">${acctItems}</ul>
+      <p class="hint">계좌마다 시작일부터 상환일(없으면 오늘)까지 잔액·금리로 이자를 계산합니다. 잔액이 크게 바뀌면 그 계좌를 수정해 반영하세요.</p>
     </div>`;
 }
 vCost.bind_ = (root) => {
@@ -530,7 +543,8 @@ vCost.bind_ = (root) => {
     if (l) openLoanModal(l);
   }));
   root.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
-    const ok = await confirmModal({ title: '대출 기록 삭제', body: '이 잔액 기록을 삭제합니다. 이자 계산에서 이 구간이 사라집니다.', okLabel: '삭제', danger: true });
+    const l = state.loans.find(x => x.id === b.dataset.del);
+    const ok = await confirmModal({ title: '대출 계좌 삭제', body: `${l ? esc(l.name) + ' 계좌를 ' : '이 계좌를 '}삭제합니다. 이 계좌의 이자가 합계에서 빠집니다.`, okLabel: '삭제', danger: true });
     if (!ok) return;
     Store.removeItem(state, 'loans', b.dataset.del);
     saveNow(); render();

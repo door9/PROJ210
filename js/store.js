@@ -36,9 +36,25 @@ export function load() {
     const raw = localStorage.getItem(KEY);
     if (!raw) return defaultState();
     const s = JSON.parse(raw);
-    return Object.assign(defaultState(), s);
+    const st = Object.assign(defaultState(), s);
+    migrate(st);
+    return st;
   } catch {
     return defaultState();
+  }
+}
+
+// 구버전 데이터 이전. 대출은 "잔액 변동 스냅샷(한 계좌)" → "계좌별 독립 대출"로 바뀜.
+// 옛 기록은 각각 별개 계좌로 보고 date를 시작일(startDate)로, 상환일(endDate)은 비움(보유 중).
+function migrate(state) {
+  for (const l of state.loans || []) {
+    if (l.startDate === undefined && l.date !== undefined) {
+      l.startDate = l.date;
+      l.name = l.name || l.kind || '대출';
+      if (l.endDate === undefined) l.endDate = null;
+      delete l.date;
+      l.updatedAt = Date.now(); // 이전본이 동기화에서 옛 기록을 이기도록 갱신
+    }
   }
 }
 
@@ -120,10 +136,10 @@ export function sampleData() {
     d({ date: '2025-10-01', fromSymbol: '005930.KS', fromName: '삼성전자', fromQty: 20,
         toSymbol: 'AAPL', toName: 'Apple', note: '삼성전자 일부를 애플로 바꿀까 고민했지만 그대로 두기로 했다.' }),
   ];
-  // 대출 잔액 스냅샷: 잔액이 바뀔 때마다 한 줄. 구간별로 그 잔액·금리로 이자를 계산한다.
+  // 투자용 대출: 계좌별로 한 줄. 각 계좌는 시작일부터 상환일(없으면 현재)까지 병렬로 이자가 쌓인다.
   const loans = [
-    d({ date: '2025-03-01', kind: '마이너스통장', balance: 30000000, rate: 6.5, note: '3월 급락 때 매수 자금으로 인출' }),
-    d({ date: '2025-11-01', kind: '마이너스통장', balance: 20000000, rate: 6.5, note: '일부 상환' }),
+    d({ name: '마이너스통장', balance: 20000000, rate: 6.5, startDate: '2025-03-01', endDate: null, note: '급락 때 매수 자금으로 인출' }),
+    d({ name: '신용대출', balance: 15000000, rate: 4.8, startDate: '2025-11-01', endDate: null, note: '증액 매수용' }),
   ];
   return { trades, diary, principles, letters, quotes, watchlist, swaps, loans };
 }

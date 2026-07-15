@@ -384,42 +384,47 @@ export function swapRows(state) {
   });
 }
 
-// ---- 투자 비용: 대출(마이너스통장) 이자 ----------------------------------------
-// loans: 잔액 스냅샷 [{date, balance, rate(연%), kind, note}]. 각 스냅샷은 그 날부터
-// 다음 스냅샷(없으면 오늘)까지 유효한 잔액·금리로 본다. 이자는 일할 계산(잔액×연율×일수/365).
+// ---- 투자 비용: 대출 이자 (계좌별 독립) ----------------------------------------
+// loans: 대출 계좌 목록 [{name, balance, rate(연%), startDate, endDate(null=보유중), note}].
+// 각 계좌는 startDate부터 endDate(없으면 오늘)까지 병렬로 이자가 쌓인다(잔액×연율×일수/365).
 export function loanStatus(state) {
-  const loans = [...(state.loans || [])].sort((a, b) => a.date < b.date ? -1 : 1);
+  const loans = state.loans || [];
   if (!loans.length) return null;
   const today = todayStr();
-  const cur = loans[loans.length - 1];
-  const monthly = cur.balance * (cur.rate / 100) / 12;
-  const daily = cur.balance * (cur.rate / 100) / 365;
 
-  let cumulative = 0;
-  const segs = [];
-  for (let i = 0; i < loans.length; i++) {
-    const from = loans[i].date;
-    const to = (i + 1 < loans.length) ? loans[i + 1].date : today;
-    const days = Math.max(0, daysBetween(from, to));
-    const interest = loans[i].balance * (loans[i].rate / 100) * days / 365;
-    cumulative += interest;
-    segs.push({ ...loans[i], to, days, interest });
-  }
+  const accounts = loans.map(l => {
+    const open = !l.endDate;
+    const end = l.endDate || today;
+    const days = Math.max(0, daysBetween(l.startDate, end));
+    return {
+      ...l, open, end, days,
+      interest: l.balance * (l.rate / 100) * days / 365,
+      monthly: open ? l.balance * (l.rate / 100) / 12 : 0,
+      daily: open ? l.balance * (l.rate / 100) / 365 : 0,
+    };
+  }).sort((a, b) => a.startDate < b.startDate ? -1 : 1);
 
-  // 이자 비용을 반영한 실질 손익 + 레버리지가 값을 하는지(펀드 연환산 수익률 vs 대출 금리)
+  const openAccts = accounts.filter(a => a.open);
+  const balance = openAccts.reduce((s, a) => s + a.balance, 0);
+  const monthly = openAccts.reduce((s, a) => s + a.monthly, 0);
+  const daily = openAccts.reduce((s, a) => s + a.daily, 0);
+  const cumulative = accounts.reduce((s, a) => s + a.interest, 0);
+  const wRate = balance > 0 ? openAccts.reduce((s, a) => s + a.balance * a.rate, 0) / balance : 0; // 잔액가중 평균금리
+
+  // 이자 비용을 반영한 실질 손익 + 레버리지가 값을 하는지(펀드 연환산 수익률 vs 평균 대출 금리)
   const pf = portfolio(state, today);
   const trades = sortedTrades(state);
-  const fundStart = trades.length ? trades[0].date : loans[0].date;
+  const fundStart = trades.length ? trades[0].date : accounts[0].startDate;
   const fundDays = Math.max(1, daysBetween(fundStart, today));
   const annualized = (pf.ret != null && pf.deposits > 0)
     ? Math.pow(1 + pf.ret, 365 / fundDays) - 1 : null;
 
+  const start = accounts.reduce((m, a) => a.startDate < m ? a.startDate : m, accounts[0].startDate);
   return {
-    loans, current: cur, balance: cur.balance, rate: cur.rate,
-    monthly, daily, cumulative, segs, start: loans[0].date, today,
+    accounts, openAccts, balance, monthly, daily, cumulative, wRate, start, today,
     profit: pf.profit, netProfit: pf.profit - cumulative,
     fundRet: pf.ret, annualized,
-    beatsHurdle: annualized != null ? annualized > cur.rate / 100 : null,
+    beatsHurdle: annualized != null ? annualized > wRate / 100 : null,
   };
 }
 
@@ -513,9 +518,10 @@ export function aiPack(state) {
   const ln = loanStatus(state);
   if (ln) {
     L.push('## 투자 비용 (대출 이자)');
-    L.push(`- 현재 대출 잔액 ${fmtMoney(ln.balance)} (연 ${ln.rate}%), 이번 달 이자 약 ${fmtMoney(ln.monthly)}`);
+    L.push(`- 대출 계좌 ${ln.openAccts.length}개, 총 잔액 ${fmtMoney(ln.balance)} (평균 금리 연 ${ln.wRate.toFixed(2)}%), 이번 달 이자 약 ${fmtMoney(ln.monthly)}`);
+    for (const a of ln.accounts) L.push(`  · ${a.name} ${fmtMoney(a.balance)} 연 ${a.rate}% (${a.startDate}~${a.open ? '보유 중' : a.endDate}) 누적이자 ${fmtMoney(a.interest)}`);
     L.push(`- ${ln.start} 이후 누적 이자 약 ${fmtMoney(ln.cumulative)} → 이자 차감 후 실질 손익 ${fmtMoney(ln.netProfit)} (명목 ${fmtMoney(ln.profit)})`);
-    if (ln.annualized != null) L.push(`- 펀드 연환산 수익률 약 ${pct(ln.annualized)} vs 대출 금리 ${ln.rate}% → 레버리지가 ${ln.beatsHurdle ? '값을 하는 중' : '비용을 못 넘고 있음'}`);
+    if (ln.annualized != null) L.push(`- 펀드 연환산 수익률 약 ${pct(ln.annualized)} vs 평균 대출 금리 ${ln.wRate.toFixed(2)}% → 레버리지가 ${ln.beatsHurdle ? '값을 하는 중' : '비용을 못 넘고 있음'}`);
     L.push('');
   }
   L.push('## 나의 투자 헌법과 위반');
