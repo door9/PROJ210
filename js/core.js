@@ -66,6 +66,7 @@ export const ICONS = {
   ai: svg('<path d="M11 4.5l1.4 4.1 4.1 1.4-4.1 1.4L11 15.5l-1.4-4.1-4.1-1.4 4.1-1.4L11 4.5z"/><path d="M18 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z"/>'),
   cost: svg('<circle cx="12" cy="12" r="8.3"/><path d="M9.2 15.2c.6.8 1.6 1.3 2.8 1.3 1.7 0 2.8-.9 2.8-2.2 0-2.9-5.2-1.6-5.2-4.4 0-1.2 1-2.1 2.6-2.1 1.1 0 2 .5 2.6 1.2"/><path d="M12 6.6v10.8"/>'),
   settings: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.7M12 18.5v2.7M2.8 12h2.7M18.5 12h2.7M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9"/>'),
+  returns: svg('<path d="M4 4v16h16"/><path d="M8 16v-4M13 16v-8M18 16v-6"/>'),
 };
 
 export const NAV = [
@@ -76,7 +77,7 @@ export const NAV = [
   { id: 'more', label: '더보기', ico: ICONS.more },
 ];
 export const NAV_DESKTOP = [
-  ['home', '홈'], ['trades', '기록'], ['watch', '관심'], ['worlds', '평행우주'], ['actions', '개입 점수'],
+  ['home', '홈'], ['trades', '기록'], ['watch', '관심'], ['returns', '수익률'], ['worlds', '평행우주'], ['actions', '개입 점수'],
   ['diary', '일지'], ['cost', '비용'], ['quotes', '글귀'], ['letters', '서한'], ['rules', '헌법'], ['ai', 'AI 복기'], ['settings', '설정'],
 ];
 

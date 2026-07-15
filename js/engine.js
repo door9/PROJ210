@@ -464,6 +464,75 @@ export function loanStatus(state) {
   };
 }
 
+// ---- 기간(주/월/연) 수익률 ------------------------------------------------------
+// 각 기간 말(마지막 거래일 종가 기준) 평가액을 전기 말과 비교. 기중 순 투입(외부에서 넣은 돈)은
+// 수익에서 제외해 순수 수익률을 낸다. 원화 기준(달러 자산은 각 시점 환율로 환산 → 환율 변동 포함).
+function contributionEvents(state) {
+  const cash = { KRW: 0, USD: 0 };
+  const ev = [];
+  for (const t of sortedTrades(state)) {
+    const cur = P.currencyOf(t.symbol);
+    if (t.side === 'buy') {
+      const cost = t.price * t.qty + (t.fee || 0);
+      const fromCash = Math.min(cash[cur], cost);
+      cash[cur] -= fromCash;
+      const ext = cost - fromCash; // 순수 외부 투입(현금 재사용 제외)
+      if (ext > 1e-9) ev.push({ date: t.date, amtKRW: P.toKRW(ext, cur, t.date) || 0 });
+    } else {
+      cash[cur] += t.price * t.qty - (t.fee || 0);
+    }
+  }
+  return ev;
+}
+
+const pad2 = n => String(n).padStart(2, '0');
+const lastDayOfMonth = (y, m) => new Date(y, m, 0).getDate(); // m: 1-based
+
+export function periodReturns(state, unit = 'month') {
+  const trades = sortedTrades(state);
+  if (!trades.length) return [];
+  const today = todayStr();
+  const first = trades[0].date;
+  const events = contributionEvents(state);
+
+  // 기간 말 날짜 목록(ends)과 라벨 함수
+  const ends = [];
+  let labelOf;
+  if (unit === 'year') {
+    const cy = Number(today.slice(0, 4));
+    for (let y = Number(first.slice(0, 4)); y <= cy; y++) ends.push(y < cy ? `${y}-12-31` : today);
+    labelOf = (s, e) => `${e.slice(0, 4)}년`;
+  } else if (unit === 'week') {
+    const sundayOf = ds => { const [Y, M, D] = ds.split('-').map(Number); const dt = new Date(Y, M - 1, D); dt.setDate(dt.getDate() + (7 - dt.getDay()) % 7); return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`; };
+    let e = sundayOf(first);
+    while (e < today) { ends.push(e); e = addDaysStr(e, 7); }
+    ends.push(today);
+    labelOf = (s, e) => `${addDaysStr(s, 1).slice(5).replace('-', '.')}~${e.slice(5).replace('-', '.')}`;
+  } else {
+    let y = Number(first.slice(0, 4)), m = Number(first.slice(5, 7));
+    const cy = Number(today.slice(0, 4)), cm = Number(today.slice(5, 7));
+    while (y < cy || (y === cy && m <= cm)) {
+      ends.push((y === cy && m === cm) ? today : `${y}-${pad2(m)}-${pad2(lastDayOfMonth(y, m))}`);
+      if (++m > 12) { m = 1; y++; }
+    }
+    labelOf = (s, e) => e.slice(0, 7).replace('-', '.');
+  }
+
+  let prevEnd = addDaysStr(first, -1); // 첫 거래 전날 = 평가액 0
+  let prevVal = 0;
+  const rows = [];
+  for (const end of ends) {
+    const endVal = portfolio(state, end).totalKRW;
+    const contrib = events.reduce((s, ev) => (ev.date > prevEnd && ev.date <= end) ? s + ev.amtKRW : s, 0);
+    const change = endVal - prevVal;          // 평가액 증감(투입 포함)
+    const gain = change - contrib;            // 순손익(투입 제외)
+    const ret = prevVal > 1 ? gain / prevVal : (contrib > 1 ? gain / contrib : null);
+    rows.push({ label: labelOf(prevEnd, end), start: prevEnd, end, isCurrent: end === today, startVal: prevVal, endVal, contrib, change, gain, ret });
+    prevEnd = end; prevVal = endVal;
+  }
+  return rows.reverse(); // 최신 먼저
+}
+
 // ---- 주주 서한 데이터 팩 -------------------------------------------------------
 export function letterPack(state, period) {
   const today = todayStr();

@@ -551,3 +551,59 @@ vCost.bind_ = (root) => {
   }));
 };
 registerView('cost', vCost);
+
+// ---------- 기간 수익률 (주간/월간/연간) ----------
+let returnsUnit = 'month';
+const UNIT_LABEL = { week: '주간', month: '월간', year: '연간' };
+function vReturns() {
+  const unit = returnsUnit;
+  const rows = E.periodReturns(state, unit);
+  const tabs = ['week', 'month', 'year'].map(u =>
+    `<button class="btn small ${u === unit ? 'primary' : ''}" data-unit="${u}">${UNIT_LABEL[u]}</button>`).join(' ');
+
+  if (!rows.length) {
+    return `
+      <div class="view-title">기간 수익률</div>
+      <p class="view-desc">기간 말(마지막 거래일 종가) 평가액을 전기 말과 비교합니다.</p>
+      <div class="btn-row" style="margin:0 0 12px;">${tabs}</div>
+      <div class="empty">매매 기록이 생기면 기간별 수익률이 정리됩니다</div>`;
+  }
+
+  // 요약: 완료된 기간만(진행 중 제외)으로 평균·최고·최저
+  const done = rows.filter(r => !r.isCurrent && r.ret != null);
+  const avg = done.length ? done.reduce((s, r) => s + r.ret, 0) / done.length : null;
+  const best = done.length ? done.reduce((a, b) => b.ret > a.ret ? b : a) : null;
+  const worst = done.length ? done.reduce((a, b) => b.ret < a.ret ? b : a) : null;
+
+  const body = rows.map(r => `
+    <tr>
+      <td>${esc(r.label)}${r.isCurrent ? ' <span class="muted small">진행 중</span>' : ''}</td>
+      <td class="num">${fmtMoney(r.endVal)}</td>
+      <td class="num ${pctClass(r.change)}">${fmtMoney(r.change)}${r.contrib > 1 ? `<br><span class="muted small">투입 ${fmtMoney(r.contrib)}</span>` : ''}</td>
+      <td class="num ${pctClass(r.gain)}">${fmtMoney(r.gain)}</td>
+      <td class="num ${pctClass(r.ret)}"><b>${fmtPct(r.ret)}</b></td>
+    </tr>`).join('');
+
+  return `
+    <div class="view-title">기간 수익률</div>
+    <p class="view-desc">기간 말(마지막 거래일 종가) 평가액을 전기 말과 비교. 원화 기준(달러 자산은 각 시점 환율로 환산 → 환율 변동 포함).</p>
+    <div class="btn-row" style="margin:0 0 12px;">${tabs}</div>
+    ${done.length ? `<div class="kpis">
+      <div class="kpi"><div class="k">${UNIT_LABEL[unit]} 평균 수익률</div><div class="v ${pctClass(avg)}">${fmtPct(avg)}</div><div class="s">완료된 ${done.length}개 기간</div></div>
+      <div class="kpi"><div class="k">최고</div><div class="v up">${fmtPct(best.ret)}</div><div class="s">${esc(best.label)}</div></div>
+      <div class="kpi"><div class="k">최저</div><div class="v down">${fmtPct(worst.ret)}</div><div class="s">${esc(worst.label)}</div></div>
+    </div>` : ''}
+    <div class="card">
+      <div class="tbl-wrap"><table class="tbl">
+        <tr><th>기간</th><th class="num">기말 평가액</th><th class="num">전기比 증감</th><th class="num">순손익</th><th class="num">수익률</th></tr>
+        ${body}
+      </table></div>
+      <p class="hint">전기比 증감은 투입한 돈을 포함한 평가액 변화이고, 순손익·수익률은 기중 투입을 제외한 실제 손익입니다. 수익률 = 순손익 ÷ 전기 말 평가액(첫 기간은 투입액 기준).</p>
+    </div>`;
+}
+vReturns.bind_ = (root) => {
+  root.querySelectorAll('[data-unit]').forEach(b => b.addEventListener('click', () => {
+    returnsUnit = b.dataset.unit; render();
+  }));
+};
+registerView('returns', vReturns);
