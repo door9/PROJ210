@@ -96,6 +96,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .tbl tr:last-child td { border-bottom: none; }
 .tbl .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tbl-wrap { overflow-x: auto; }
+tr.row-link { cursor: pointer; }
+tr.row-link:hover { background: var(--accent-soft); }
+tr.row-link .chev { color: var(--sub); font-weight: 400; }
 
 /* 버튼 */
 .btn {

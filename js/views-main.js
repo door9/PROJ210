@@ -64,8 +64,8 @@ function vHome() {
   if (vio.length) alerts.push(`<div class="warnbox">투자 헌법 위반 ${vio.length}건 — <a href="#/rules">헌법</a>에서 확인</div>`);
 
   const holdRows = pf.rows.map(r => `
-    <tr>
-      <td><b>${esc(r.name)}</b><br><span class="muted small">${esc(r.symbol)}</span></td>
+    <tr class="row-link" data-sym="${esc(r.symbol)}">
+      <td><b>${esc(r.name)}</b> <span class="chev">›</span><br><span class="muted small">${esc(r.symbol)}</span></td>
       <td class="num">${fmtQty(r.qty)}주</td>
       <td class="num">${fmtMoney(r.value, r.cur)}<br><span class="muted small">${(r.weight * 100).toFixed(1)}%</span></td>
       <td class="num ${pctClass(r.ret)}">${fmtPct(r.ret)}</td>
@@ -127,6 +127,7 @@ function vHome() {
     </div>`;
 }
 vHome.bind_ = (root) => {
+  root.querySelectorAll('.row-link[data-sym]').forEach(tr => tr.addEventListener('click', () => go('symbol/' + encodeURIComponent(tr.dataset.sym))));
   root.querySelector('[data-act=requote]')?.addEventListener('click', render);
   root.querySelector('[data-act=sample]')?.addEventListener('click', () => {
     Store.addSample(state); saveNow(); render(); toast('예시 데이터를 넣었습니다');
@@ -138,17 +139,11 @@ vHome.bind_ = (root) => {
 };
 registerView('home', vHome);
 
-// ---------- 기록 ----------
-function vTrades() {
-  const trades = E.sortedTrades(state).reverse();
-  const { realized } = E.replay(E.sortedTrades(state));
-  const retBySell = new Map(realized.map(r => [r.sell.id, r]));
-
-  const items = trades.map(t => {
-    const cur = P.currencyOf(t.symbol);
-    const amt = t.price * t.qty;
-    const r = retBySell.get(t.id);
-    return `
+// ---------- 매매 기록 아이템 (기록 페이지·종목 페이지 공용) ----------
+function tradeItemHtml(t, r) {
+  const cur = P.currencyOf(t.symbol);
+  const amt = t.price * t.qty;
+  return `
     <div class="trade-item" data-id="${t.id}">
       <div class="trade-head">
         <span class="tag ${t.side}">${t.side === 'buy' ? '매수' : '매도'}</span>
@@ -173,22 +168,8 @@ function vTrades() {
         </span>
       </div>
     </div>`;
-  }).join('');
-
-  return `
-    <div class="view-title">매매 기록</div>
-    <p class="view-desc">결과가 아니라 판단을 남기는 곳. 팔 때는 살 때의 기록과 대조합니다.</p>
-    <div class="btn-row" style="margin:0 0 12px;">
-      <button class="btn primary" data-act="buy">매수 기록</button>
-      <button class="btn" data-act="sell">매도 기록</button>
-    </div>
-    <div class="card">
-      ${items || '<div class="empty">아직 기록이 없습니다</div>'}
-    </div>`;
 }
-vTrades.bind_ = (root) => {
-  root.querySelector('[data-act=buy]').addEventListener('click', () => openTradeForm('buy'));
-  root.querySelector('[data-act=sell]').addEventListener('click', () => openTradeForm('sell'));
+function bindTradeItems(root) {
   root.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => {
     const t = state.trades.find(x => x.id === b.dataset.edit);
     if (t) openTradeForm(t.side, t);
@@ -205,8 +186,76 @@ vTrades.bind_ = (root) => {
     Store.removeItem(state, 'trades', t.id);
     saveNow(); render(); toast('삭제했습니다');
   }));
+}
+
+// ---------- 기록 ----------
+function vTrades() {
+  const trades = E.sortedTrades(state).reverse();
+  const { realized } = E.replay(E.sortedTrades(state));
+  const retBySell = new Map(realized.map(r => [r.sell.id, r]));
+  const items = trades.map(t => tradeItemHtml(t, retBySell.get(t.id))).join('');
+
+  return `
+    <div class="view-title">매매 기록</div>
+    <p class="view-desc">결과가 아니라 판단을 남기는 곳. 팔 때는 살 때의 기록과 대조합니다.</p>
+    <div class="btn-row" style="margin:0 0 12px;">
+      <button class="btn primary" data-act="buy">매수 기록</button>
+      <button class="btn" data-act="sell">매도 기록</button>
+    </div>
+    <div class="card">
+      ${items || '<div class="empty">아직 기록이 없습니다</div>'}
+    </div>`;
+}
+vTrades.bind_ = (root) => {
+  root.querySelector('[data-act=buy]').addEventListener('click', () => openTradeForm('buy'));
+  root.querySelector('[data-act=sell]').addEventListener('click', () => openTradeForm('sell'));
+  bindTradeItems(root);
 };
 registerView('trades', vTrades);
+
+// ---------- 종목 상세 (보유 종목 클릭 시) ----------
+function vSymbol(symbol) {
+  const symTrades = E.sortedTrades(state).filter(t => t.symbol === symbol).reverse();
+  if (!symbol || !symTrades.length) {
+    return `
+      <div class="view-title">종목</div>
+      <div class="empty">${esc(symbol || '')} 매매 기록이 없습니다</div>
+      <div class="btn-row"><a class="btn" href="#/home">← 홈으로</a></div>`;
+  }
+  const name = symTrades.find(t => t.name)?.name || symbol;
+  const cur = P.currencyOf(symbol);
+  const { realized } = E.replay(E.sortedTrades(state));
+  const retBySell = new Map(realized.map(r => [r.sell.id, r]));
+  const symRealized = realized.filter(r => r.sell.symbol === symbol);
+  const realizedPnl = symRealized.reduce((s, r) => s + r.pnl, 0);
+  const realizedCost = symRealized.reduce((s, r) => s + r.costSum, 0);
+  const pf = E.portfolio(state);
+  const pos = pf.rows.find(r => r.symbol === symbol);
+  const last = P.last(symbol);
+
+  const stat = (k, v, cls = '') => `<tr><td class="muted">${k}</td><td class="num ${cls}"><b>${v}</b></td></tr>`;
+  const summary = `
+    <div class="tbl-wrap"><table class="tbl">
+      ${pos ? `
+        ${stat('보유 수량', fmtQty(pos.qty) + '주')}
+        ${stat('평균 단가', fmtMoney(pos.cost / pos.qty, cur))}
+        ${stat('평가액', fmtMoney(pos.value, cur))}
+        ${stat('평가손익', `${fmtMoney(pos.value - pos.cost, cur)} (${fmtPct(pos.ret)})`, pctClass(pos.ret))}
+      ` : stat('보유', '없음 (전량 매도)')}
+      ${symRealized.length ? stat('실현 손익', `${fmtMoney(realizedPnl, cur)}${realizedCost > 0 ? ` (${fmtPct(realizedPnl / realizedCost)})` : ''}`, pctClass(realizedPnl)) : ''}
+    </table></div>`;
+
+  const items = symTrades.map(t => tradeItemHtml(t, retBySell.get(t.id))).join('');
+
+  return `
+    <div class="view-title">${esc(name)}</div>
+    <p class="view-desc">${esc(symbol)}${last ? ` · 현재가 ${fmtMoney(last.close, cur)} <span class="muted">(${last.date})</span>` : ' · 시세 없음'}</p>
+    <div class="card"><h3>현황</h3>${summary}</div>
+    <div class="card"><h3>매매 기록 (${symTrades.length}건)</h3>${items}</div>
+    <div class="btn-row"><a class="btn" href="#/home">← 홈으로</a></div>`;
+}
+vSymbol.bind_ = (root) => { bindTradeItems(root); };
+registerView('symbol', vSymbol);
 
 // ---------- 매매 입력 폼 ----------
 function emotionChips(selected = []) {

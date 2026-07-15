@@ -90,12 +90,16 @@ export function go(route) { location.hash = '#/' + route; }
 
 export function render() {
   const route = currentRoute();
-  const fn = views[route] || views.home;
+  // 파라미터 경로 지원: "symbol/AAPL" → 뷰 'symbol', 인자 'AAPL'
+  const slash = route.indexOf('/');
+  const name = slash < 0 ? route : route.slice(0, slash);
+  const arg = slash < 0 ? '' : decodeURIComponent(route.slice(slash + 1));
+  const fn = views[name] || views.home;
   const main = document.getElementById('view');
-  main.innerHTML = fn();
+  main.innerHTML = fn(arg);
   // 뷰별 후처리(이벤트 바인딩)
-  if (fn.bind_) fn.bind_(main);
-  renderNav(route);
+  if (fn.bind_) fn.bind_(main, arg);
+  renderNav(name);
   main.scrollTop = 0;
   window.scrollTo(0, 0);
 }
