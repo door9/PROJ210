@@ -51,15 +51,32 @@ def fetch_chart(symbol: str) -> dict:
         day = time.strftime("%Y-%m-%d", time.gmtime(t + meta.get("gmtoffset", 0)))
         a = adj[i] if adj and adj[i] is not None else c
         out.append([day, round(c, 4), round(a, 4)])
+    # 종목명: 한국 상장(.KS/.KQ)은 네이버에서 한글명, 그 외는 야후 영문명
+    name = korean_name(symbol) or meta.get("longName") or meta.get("shortName") or symbol
     return {
         "symbol": symbol,
         "currency": meta.get("currency"),
-        "name": meta.get("longName") or meta.get("shortName") or symbol,
+        "name": name,
         "exchange": meta.get("exchangeName"),
         "updatedAt": int(time.time()),
         # [날짜, 종가, 수정종가(배당·분할 반영)]
         "closes": out,
     }
+
+
+def korean_name(symbol):
+    """한국 상장 종목(005930.KS 등)의 한글 종목명을 네이버에서 조회. 실패 시 None."""
+    m = symbol.split(".")
+    if len(m) != 2 or m[1] not in ("KS", "KQ") or not m[0].isdigit():
+        return None
+    try:
+        url = f"https://m.stock.naver.com/api/stock/{m[0]}/basic"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            d = json.load(r)
+        return d.get("stockName") or None
+    except Exception:
+        return None
 
 
 def main():

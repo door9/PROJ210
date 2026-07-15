@@ -1,10 +1,11 @@
 // 화면: 홈(대시보드), 기록(매매 목록 + 입력 폼)
-import { state, saveNow, toast, openModal, closeModal, confirmModal, registerView, render, go } from './core.js';
+import { state, saveNow, toast, openModal, closeModal, confirmModal, registerView, render, go, triggerRefresh } from './core.js';
 import * as Store from './store.js';
 import * as P from './prices.js';
 import * as E from './engine.js';
 import { uid, todayStr, esc, fmtMoney, moneyKorean, fmtPct, fmtQty, pctClass, quarterOf } from './util.js';
 import * as Dbx from './dropbox.js';
+import * as Lock from './lock.js';
 
 // ---------- 홈 ----------
 // 글귀 서랍에서 랜덤 한 문장
@@ -43,8 +44,7 @@ function vHome() {
           · <b>AI 복기</b> — 기록 전체를 넘겨 심문받기
         </p>
         <div class="btn-row">
-          <button class="btn primary" data-act="sample">예시 데이터로 구경하기</button>
-          <button class="btn" data-act="first-trade">첫 매매 기록하기</button>
+          <button class="btn primary" data-act="first-trade">첫 매매 기록하기</button>
         </div>
       </div>`;
   }
@@ -55,7 +55,7 @@ function vHome() {
   const ln = E.loanStatus(state);
 
   const alerts = [];
-  if (Store.hasSample(state)) alerts.push(`<div class="notice">예시 데이터가 표시되는 중입니다. 설정에서 지울 수 있습니다.</div>`);
+  if (!Lock.hasPin()) alerts.push(`<div class="warnbox">앱 잠금(PIN)이 설정되지 않았습니다 — <a href="#/settings">설정</a>에서 PIN을 설정하세요.</div>`);
   if (!Dbx.connected()) alerts.push(`<div class="notice">아직 이 기기에만 저장 중 — <a href="#/settings">설정</a>에서 Dropbox를 연결하면 PC·폰 간 동기화됩니다.</div>`);
   const q = quarterOf(todayStr());
   if (!state.letters.some(l => l.period === q)) alerts.push(`<div class="notice">이번 분기(${q}) <a href="#/letters">주주 서한</a>을 아직 쓰지 않았습니다.</div>`);
@@ -70,6 +70,19 @@ function vHome() {
       <td class="num">${fmtMoney(r.value, r.cur)}<br><span class="muted small">${(r.weight * 100).toFixed(1)}%</span></td>
       <td class="num ${pctClass(r.ret)}">${fmtPct(r.ret)}</td>
     </tr>`).join('');
+  // 매도 후 현금(재투자 안 한 잔여) — 통화별로 포트폴리오에 표시
+  const cashRow = (label, amt, curc) => `
+    <tr>
+      <td><b>${label}</b><br><span class="muted small">매도 대금 · 미투자</span></td>
+      <td class="num">–</td>
+      <td class="num">${fmtMoney(amt, curc)}</td>
+      <td class="num">–</td>
+    </tr>`;
+  const cashRows = [
+    pf.cash.KRW > 1 ? cashRow('원화 현금', pf.cash.KRW, 'KRW') : '',
+    pf.cashUSD > 0.01 ? cashRow('달러 현금', pf.cashUSD, 'USD') : '',
+  ].join('');
+  const hasHoldingsOrCash = pf.rows.length || cashRows;
 
   // 투입 원금·수익률: 통화별로 분리 (달러는 환산하지 않고 그대로)
   const sK = pf.sleeves.KRW, sU = pf.sleeves.USD;
@@ -81,7 +94,7 @@ function vHome() {
   const bothCur = sK.has && sU.has;
 
   return `
-    <div class="view-title">${esc(state.settings.fundName || 'PROJ210')}</div>
+    <div class="view-title">${esc(state.settings.fundName || 'PROJ210')} <button class="btn small" data-act="refresh" title="시세 지금 갱신" style="vertical-align:2px;">↻ 시세</button></div>
     <p class="view-desc">기준일 ${pf.date} · 배당 재투자 가정 · 달러는 당일 환율 환산</p>
     ${quoteCard()}
     ${alerts.join('')}
@@ -93,7 +106,6 @@ function vHome() {
         ${bothCur && pf.ret != null ? `<span class="muted">· 합산 <b class="${pctClass(pf.ret)}">${fmtPct(pf.ret)}</b> (환율 영향 제외)</span>` : ''}
       </div>
       ${bothCur ? `<div class="row muted small">현재 평가액: 원화 ${fmtMoney(pf.holdKRW + pf.cash.KRW)} + 달러 ${fmtMoney(pf.holdUSD + pf.cashUSD, 'USD')}${pf.fx ? ` · 환율 ₩${Math.round(pf.fx).toLocaleString()}` : ''}</div>` : ''}
-      ${pf.cashKRW > 1 ? `<div class="row muted small">매도 대금 현금 ${fmtMoney(pf.cashKRW)}</div>` : ''}
     </div>
     ${ln ? `<a href="#/cost" class="card loan-card" style="display:block; text-decoration:none; color:inherit;">
       <div class="trade-head">
@@ -111,14 +123,14 @@ function vHome() {
       <div class="kpi"><div class="k">한 번도 안 팔았다면</div><div class="v">${moneyKorean(w.neverSell[li])}</div><div class="s ${pctClass(w.neverSell[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.neverSell[li] - w.actual[li])}</div></div>
       <div class="kpi"><div class="k">코스피만 샀다면</div><div class="v">${moneyKorean(w.kospi[li])}</div><div class="s ${pctClass(w.kospi[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.kospi[li] - w.actual[li])}</div></div>
       <div class="kpi"><div class="k">S&P500만 샀다면</div><div class="v">${moneyKorean(w.sp500[li])}</div><div class="s ${pctClass(w.sp500[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.sp500[li] - w.actual[li])}</div></div>
-      <div class="kpi"><div class="k">정기예금만 했다면 (연 ${w.rate}%)</div><div class="v">${moneyKorean(w.bank[li])}</div><div class="s ${pctClass(w.bank[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.bank[li] - w.actual[li])}</div></div>
+      <div class="kpi"><div class="k">예금만 했다면 (연 ${w.rate}%)</div><div class="v">${moneyKorean(w.bank[li])}</div><div class="s ${pctClass(w.bank[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.bank[li] - w.actual[li])}</div></div>
     </div>
     <p class="small muted" style="margin:6px 2px 14px;">자세한 곡선은 <a href="#/worlds">평행우주</a>에서.</p>` : ''}
     <div class="card">
       <h3>보유 종목</h3>
-      ${pf.rows.length ? `<div class="tbl-wrap"><table class="tbl">
+      ${hasHoldingsOrCash ? `<div class="tbl-wrap"><table class="tbl">
         <tr><th>종목</th><th class="num">수량</th><th class="num">평가액</th><th class="num">수익률</th></tr>
-        ${holdRows}</table></div>` : `<div class="empty">보유 종목이 없습니다</div>`}
+        ${holdRows}${cashRows}</table></div>` : `<div class="empty">보유 종목이 없습니다</div>`}
     </div>
     <div class="btn-row">
       <button class="btn primary" data-act="buy">매수 기록</button>
@@ -129,9 +141,7 @@ function vHome() {
 vHome.bind_ = (root) => {
   root.querySelectorAll('.row-link[data-sym]').forEach(tr => tr.addEventListener('click', () => go('symbol/' + encodeURIComponent(tr.dataset.sym))));
   root.querySelector('[data-act=requote]')?.addEventListener('click', render);
-  root.querySelector('[data-act=sample]')?.addEventListener('click', () => {
-    Store.addSample(state); saveNow(); render(); toast('예시 데이터를 넣었습니다');
-  });
+  root.querySelector('[data-act=refresh]')?.addEventListener('click', triggerRefresh);
   root.querySelector('[data-act=first-trade]')?.addEventListener('click', () => openTradeForm('buy'));
   root.querySelector('[data-act=buy]')?.addEventListener('click', () => openTradeForm('buy'));
   root.querySelector('[data-act=sell]')?.addEventListener('click', () => openTradeForm('sell'));
@@ -289,14 +299,11 @@ export function openTradeForm(side, existing = null) {
     <h2>${existing ? '기록 수정' : (isBuy ? '매수 기록' : '매도 기록')}</h2>
     <form id="trade-form">
       <div class="form-grid">
-        <label class="fld full">종목
+        <label class="fld full">종목 <span id="name-hint" class="muted"></span>
           ${isBuy
-            ? `<input name="symbol" list="symlist" placeholder="티커 (예: 005930 또는 AAPL)" value="${esc(t.symbol || '')}" required autocomplete="off">
+            ? `<input name="symbol" list="symlist" placeholder="종목 번호 또는 티커 (예: 005930 또는 AAPL)" value="${esc(t.symbol || '')}" required autocomplete="off">
                <datalist id="symlist">${knownList}</datalist>`
             : `<select name="symbol" required>${sellOptions}</select>`}
-        </label>
-        <label class="fld">종목 이름
-          <input name="name" placeholder="자동/직접 입력" value="${esc(t.name || '')}">
         </label>
         <label class="fld">날짜
           <input type="date" name="date" max="${today}" value="${t.date || today}" required>
@@ -307,23 +314,17 @@ export function openTradeForm(side, existing = null) {
         <label class="fld">수량
           <input type="number" name="qty" step="any" min="0" inputmode="decimal" value="${t.qty ?? ''}" required>
         </label>
-        <label class="fld full">수수료·세금 (선택)
+        <label class="fld">수수료·세금 (선택)
           <input type="number" name="fee" step="any" min="0" inputmode="decimal" value="${t.fee || ''}">
         </label>
 
         ${isBuy ? `
         ${manualPrinciples.length ? `<div class="full notice"><b>매수 전 점검 (나의 헌법)</b><br>${manualPrinciples.map(p => '· ' + esc(p.text)).join('<br>')}</div>` : ''}
-        <label class="fld full">왜 사는가 — 미래의 나에게 설명하기
-          <textarea name="reason" placeholder="사업·가격에 대한 판단. 팔 때 이 글이 다시 나타납니다." required>${esc(t.reason || '')}</textarea>
+        <label class="fld full">왜 사는가 (선택) — 미래의 나에게 설명하기
+          <textarea name="reason" placeholder="사업·가격에 대한 판단. 팔 때 이 글이 다시 나타납니다.">${esc(t.reason || '')}</textarea>
         </label>
-        <label class="fld full">어떤 일이 벌어지면 팔 것인가 (미리 정하는 매도 조건)
+        <label class="fld full">어떤 일이 벌어지면 팔 것인가 (선택, 미리 정하는 매도 조건)
           <textarea name="sellPlan" placeholder="예: 이 사업 논리가 깨지면 / 목표 밸류에이션 도달하면">${esc(t.sellPlan || '')}</textarea>
-        </label>
-        <label class="fld">이 판단의 확신도: <output id="conf-out">${t.confidence ?? 70}</output>%
-          <input type="range" name="confidence" min="0" max="100" step="5" value="${t.confidence ?? 70}">
-        </label>
-        <label class="fld">계획 보유 기간 (개월)
-          <input type="number" name="planMonths" min="0" step="1" inputmode="numeric" value="${t.planMonths ?? ''}">
         </label>
         ` : `
         <div class="full" id="past-record"></div>
@@ -349,14 +350,15 @@ export function openTradeForm(side, existing = null) {
 
   const form = m.querySelector('#trade-form');
   const curHint = m.querySelector('#cur-hint');
+  const nameHint = m.querySelector('#name-hint');
 
   function updateSymbolInfo() {
     const raw = form.symbol.value;
-    if (!raw) return;
+    if (!raw) { if (nameHint) nameHint.textContent = ''; return; }
     const sym = P.resolveSymbol(raw);
     const info = P.info(sym);
     if (info) {
-      if (!form.name.value || form.name.dataset.auto === '1') { form.name.value = info.name; form.name.dataset.auto = '1'; }
+      if (nameHint) nameHint.textContent = `— ${info.name}`; // 종목명 자동
       const l = P.last(sym);
       curHint.textContent = `· ${info.currency}${l ? ` · 최근 종가 ${fmtMoney(l.close, info.currency)} (${l.date})` : ''}`;
       // 날짜의 종가 자동 제안 (가격 비어 있을 때)
@@ -365,7 +367,8 @@ export function openTradeForm(side, existing = null) {
         if (c) form.price.value = c;
       }
     } else {
-      curHint.textContent = `· 시세 미등록 (${P.currencyOf(sym)} 추정)`;
+      if (nameHint) nameHint.textContent = '';
+      curHint.textContent = `· 시세 미등록 (${P.currencyOf(sym)} 추정) — 종목명은 시세 등록 후 자동 설정됩니다`;
     }
   }
   form.symbol.addEventListener('change', updateSymbolInfo);
@@ -378,7 +381,7 @@ export function openTradeForm(side, existing = null) {
       if (!lots.length) { box.innerHTML = ''; return; }
       box.innerHTML = `<div class="warnbox" style="background:var(--accent-soft); color:var(--ink);">
         <b>살 때의 나는 이렇게 말했다</b><br>
-        ${lots.map(l => `<div style="margin-top:6px;"><span class="muted small">${l.t.date} 매수 ${fmtQty(l.qtyLeft)}주 보유 중 · 확신도 ${l.t.confidence ?? '?'}%</span><br>${esc(l.t.reason || '(이유 기록 없음)')}${l.t.sellPlan ? `<br><span class="small">매도 조건: ${esc(l.t.sellPlan)}</span>` : ''}</div>`).join('')}
+        ${lots.map(l => `<div style="margin-top:6px;"><span class="muted small">${l.t.date} 매수 ${fmtQty(l.qtyLeft)}주 보유 중</span>${l.t.reason ? `<br>${esc(l.t.reason)}` : ''}${l.t.sellPlan ? `<br><span class="small">매도 조건: ${esc(l.t.sellPlan)}</span>` : ''}</div>`).join('')}
       </div>`;
     };
     form.symbol.addEventListener('change', renderPastRecord);
@@ -387,8 +390,6 @@ export function openTradeForm(side, existing = null) {
   }
   updateSymbolInfo();
 
-  const confOut = m.querySelector('#conf-out');
-  if (confOut) form.confidence.addEventListener('input', () => confOut.textContent = form.confidence.value);
   m.querySelector('#emo-chips').addEventListener('click', e => {
     if (e.target.classList.contains('chip')) e.target.classList.toggle('on');
   });
@@ -403,7 +404,7 @@ export function openTradeForm(side, existing = null) {
     const draft = {
       id: t.id || uid(),
       side, symbol,
-      name: form.name.value.trim() || P.info(symbol)?.name || symbol,
+      name: P.info(symbol)?.name || t.name || symbol, // 종목명 자동
       date: form.date.value,
       price, qty,
       fee: parseFloat(form.fee.value) || 0,
@@ -412,10 +413,7 @@ export function openTradeForm(side, existing = null) {
       createdAt: t.createdAt || Date.now(),
       updatedAt: Date.now(),
     };
-    if (t.sample) draft.sample = true;
     if (isBuy) {
-      draft.confidence = parseInt(form.confidence.value, 10);
-      draft.planMonths = parseInt(form.planMonths.value, 10) || null;
       draft.sellPlan = form.sellPlan.value.trim();
     } else {
       draft.sellReasonType = form.sellReasonType.value;

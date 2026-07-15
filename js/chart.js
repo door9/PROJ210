@@ -44,7 +44,7 @@ export function lineChart({ series, labels, height = 300 }) {
       dcmd += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1);
       pen = true;
     }
-    if (dcmd) g += `<path d="${dcmd}" fill="none" stroke="${s.color}" stroke-width="2.2" ${s.dash ? 'stroke-dasharray="5 4" stroke-width="1.6"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`;
+    if (dcmd) g += `<path d="${dcmd}" fill="none" stroke="${s.color}" stroke-width="1.5" ${s.dash ? 'stroke-dasharray="5 4" stroke-width="1.2"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`;
   }
   const legend = series.map(s =>
     `<span><span class="sw" style="background:${s.color}"></span>${s.label}</span>`).join('');

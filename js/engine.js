@@ -576,7 +576,7 @@ export function aiPack(state) {
   L.push(`- 수익률: ${retStr}${pf.sleeves.KRW.has && pf.sleeves.USD.has ? ` / 합산 ${pct(pf.ret)}(환율 영향 제외)` : ''}`);
   if (w) {
     const last = w.dates.length - 1;
-    L.push(`- 평행우주(같은 매수를 했을 때의 현재 가치): 실제 ${fmtMoney(w.actual[last])} / 한 번도 안 팔았다면 ${fmtMoney(w.neverSell[last])} / 코스피만 샀다면 ${fmtMoney(w.kospi[last])} / S&P500만 샀다면 ${fmtMoney(w.sp500[last])} / 정기예금(연 ${w.rate}%)만 했다면 ${fmtMoney(w.bank[last])}`);
+    L.push(`- 평행우주(같은 매수를 했을 때의 현재 가치): 실제 ${fmtMoney(w.actual[last])} / 한 번도 안 팔았다면 ${fmtMoney(w.neverSell[last])} / 코스피만 샀다면 ${fmtMoney(w.kospi[last])} / S&P500만 샀다면 ${fmtMoney(w.sp500[last])} / 예금(연 ${w.rate}%)만 했다면 ${fmtMoney(w.bank[last])}`);
   }
   L.push('');
   L.push('## 보유 종목');

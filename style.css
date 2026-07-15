@@ -96,6 +96,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .tbl tr:last-child td { border-bottom: none; }
 .tbl .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tbl-wrap { overflow-x: auto; }
+.tbl tr.year-sep td { background: var(--bg); font-weight: 700; font-size: 12.5px; color: var(--sub); padding: 6px 8px; }
 tr.row-link { cursor: pointer; }
 tr.row-link:hover { background: var(--accent-soft); }
 tr.row-link .chev { color: var(--sub); font-weight: 400; }
@@ -196,6 +197,22 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   .modal { border-radius: 18px; }
 }
 .modal h2 { margin: 0 0 12px; font-size: 17px; }
+
+/* 앱 잠금 (PIN) */
+.lock-back {
+  position: fixed; inset: 0; z-index: 100; background: var(--bg);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.lock-box { width: 100%; max-width: 300px; text-align: center; }
+.lock-logo { font-size: 40px; }
+.lock-title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-top: 6px; }
+.lock-sub { color: var(--sub); font-size: 13.5px; margin: 4px 0 18px; }
+.lock-input {
+  width: 100%; text-align: center; letter-spacing: 0.4em; font-size: 22px;
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--card);
+}
+.lock-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.lock-err { color: var(--down); font-size: 13px; min-height: 20px; margin: 8px 0; }
 
 /* 토스트 */
 #toast-root { position: fixed; bottom: calc(var(--nav-h) + 18px); left: 0; right: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }

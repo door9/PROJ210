@@ -1,10 +1,11 @@
 // 화면: 주주 서한, 투자 헌법, AI 복기, 설정, 더보기
-import { state, saveNow, toast, openModal, closeModal, confirmModal, registerView, render, refreshPriceStatus, ICONS } from './core.js';
+import { state, saveNow, toast, openModal, closeModal, confirmModal, registerView, render, refreshPriceStatus, triggerRefresh, ICONS } from './core.js';
 import * as Store from './store.js';
 import * as P from './prices.js';
 import * as E from './engine.js';
 import * as Dbx from './dropbox.js';
 import * as Sync from './sync.js';
+import * as Lock from './lock.js';
 import { uid, todayStr, esc, fmtMoney, fmtPct, pctClass, quarterOf } from './util.js';
 
 // ---------- 주주 서한 ----------
@@ -329,9 +330,38 @@ vQuotes.bind_ = (root) => {
 };
 registerView('quotes', vQuotes);
 
+// PIN 설정/변경/해제 모달
+function openPinModal(mode) {
+  const pinField = (id, label) => `<label class="fld" style="margin-top:10px;">${label}<input id="${id}" type="password" inputmode="numeric" maxlength="12" autocomplete="off"></label>`;
+  const title = mode === 'set' ? 'PIN 설정' : mode === 'change' ? 'PIN 변경' : 'PIN 해제';
+  const m = openModal(`
+    <h2>${title}</h2>
+    ${mode !== 'set' ? pinField('cur', '현재 PIN') : ''}
+    ${mode !== 'clear' ? pinField('p1', '새 PIN (숫자 4자리 이상)') + pinField('p2', '새 PIN 확인') : ''}
+    <div class="btn-row" style="justify-content:flex-end; margin-top:14px;">
+      <button type="button" class="btn" data-x="cancel">취소</button>
+      <button type="button" class="btn ${mode === 'clear' ? 'danger' : 'primary'}" data-x="ok">${mode === 'clear' ? '해제' : '저장'}</button>
+    </div>`);
+  m.querySelector('[data-x=cancel]').onclick = closeModal;
+  m.querySelector('[data-x=ok]').onclick = async () => {
+    if (mode !== 'set') {
+      const cur = m.querySelector('#cur').value;
+      if (!(await Lock.verify(cur))) { toast('현재 PIN이 맞지 않습니다'); return; }
+    }
+    if (mode === 'clear') {
+      Lock.clearPin(); closeModal(); render(); toast('PIN을 해제했습니다');
+      return;
+    }
+    const p1 = m.querySelector('#p1').value, p2 = m.querySelector('#p2').value;
+    if (!/^\d{4,}$/.test(p1)) { toast('숫자 4자리 이상으로 정하세요'); return; }
+    if (p1 !== p2) { toast('두 PIN이 서로 다릅니다'); return; }
+    await Lock.setPin(p1);
+    closeModal(); render(); toast(mode === 'change' ? 'PIN을 변경했습니다' : 'PIN을 설정했습니다');
+  };
+}
+
 // ---------- 설정 ----------
 function vSettings() {
-  const has = Store.hasSample(state);
   const syms = P.symbols().filter(s => !s.startsWith('^') && s !== 'KRW=X');
   const u = P.updatedAt();
   return `
@@ -377,6 +407,7 @@ function vSettings() {
         </label>
         <div class="full btn-row" style="margin:0;">
           <button class="btn primary" type="submit">저장 후 연결 확인</button>
+          ${state.settings.ghPat ? '<button type="button" class="btn" data-x="refreshnow">↻ 시세 지금 갱신</button>' : ''}
         </div>
       </form>
       <div id="gh-test-result"></div>
@@ -392,13 +423,13 @@ function vSettings() {
       마감된 시장(주말·공휴일 포함)은 최근 종가를 그대로 사용합니다. 안전망으로 매일 07:10·16:10(한국시간)에도 갱신됩니다.</p>
     </div>
     <div class="card">
-      <h3>예시 데이터</h3>
-      <div class="btn-row" style="margin-top:6px;">
-        ${has
-          ? `<button class="btn danger" data-x="delsample">예시 데이터만 지우기</button>`
-          : `<button class="btn" data-x="addsample">예시 데이터 넣기</button>`}
-      </div>
-      <p class="hint">예시 표시가 붙은 항목만 넣고 지웁니다. 직접 기록한 데이터는 건드리지 않습니다.</p>
+      <h3>앱 잠금 (PIN)</h3>
+      ${Lock.hasPin()
+        ? `<p class="small muted" style="margin:4px 0 0;"><span style="color:var(--accent);">✓ PIN 설정됨</span> — 앱을 열 때마다 PIN을 입력해야 합니다.</p>
+           <div class="btn-row"><button class="btn" data-x="changepin">PIN 변경</button><button class="btn danger" data-x="clearpin">PIN 해제</button></div>`
+        : `<p class="small muted" style="margin:4px 0 0;">앱을 열 때 PIN을 입력하도록 잠글 수 있습니다. 민감한 금융 정보를 가려 줍니다.</p>
+           <div class="btn-row"><button class="btn primary" data-x="setpin">PIN 설정</button></div>`}
+      <p class="hint">PIN은 이 기기에만 저장됩니다(PC·폰 각각 설정). 기기 잠금 화면 수준의 가벼운 보호이며, 기기 자체에 접근 가능한 사람으로부터 완벽히 막아 주지는 않습니다.</p>
     </div>
     <div class="card">
       <h3>회계 가정</h3>
@@ -410,7 +441,7 @@ function vSettings() {
         · 모든 평행우주에 같은 가정을 적용하므로 비교는 공정
       </p>
       <form id="rate-form" class="btn-row" style="align-items:center; gap:6px;">
-        <span class="small">정기예금 가정 금리: 연</span>
+        <span class="small">예금 가정 금리: 연</span>
         <input name="depositRate" type="number" step="0.1" min="0" max="20" inputmode="decimal"
           value="${state.settings.depositRate ?? 3}"
           style="width:70px; border:1px solid var(--line); border-radius:8px; padding:6px 8px; background:var(--bg); text-align:right;">
@@ -471,7 +502,7 @@ vSettings.bind_ = (root) => {
     if (isNaN(v) || v < 0) { toast('금리를 확인하세요'); return; }
     state.settings.depositRate = v;
     state.settings.updatedAt = Date.now();
-    saveNow(); render(); toast(`정기예금 가정 금리를 연 ${v}%로 저장했습니다`);
+    saveNow(); render(); toast(`예금 가정 금리를 연 ${v}%로 저장했습니다`);
   });
   root.querySelector('#name-form').addEventListener('submit', e => {
     e.preventDefault();
@@ -508,14 +539,10 @@ vSettings.bind_ = (root) => {
       toast('파일을 읽을 수 없습니다');
     }
   });
-  root.querySelector('[data-x=addsample]')?.addEventListener('click', () => {
-    Store.addSample(state); saveNow(); render(); toast('예시 데이터를 넣었습니다');
-  });
-  root.querySelector('[data-x=delsample]')?.addEventListener('click', async () => {
-    const ok = await confirmModal({ title: '예시 데이터 삭제', body: '예시 표시가 붙은 항목만 지웁니다. 직접 기록한 데이터는 남습니다.', okLabel: '지우기', danger: true });
-    if (!ok) return;
-    Store.removeSample(state); saveNow(); render(); toast('예시 데이터를 지웠습니다');
-  });
+  root.querySelector('[data-x=setpin]')?.addEventListener('click', () => openPinModal('set'));
+  root.querySelector('[data-x=changepin]')?.addEventListener('click', () => openPinModal('change'));
+  root.querySelector('[data-x=clearpin]')?.addEventListener('click', () => openPinModal('clear'));
+  root.querySelector('[data-x=refreshnow]')?.addEventListener('click', triggerRefresh);
   root.querySelector('[data-x=clearpending]')?.addEventListener('click', () => {
     state.pendingSymbols = []; saveNow(); render();
   });
@@ -533,7 +560,7 @@ function vMore() {
     ['letters', '주주 서한', '분기마다 나에게 쓰는 운용보고서'],
     ['rules', '투자 헌법', '원칙 자동 감시와 원칙 검증'],
     ['ai', 'AI 복기', '기록 전체를 Claude에게 심문받기'],
-    ['settings', '설정', '백업 · 시세 · 예시 데이터'],
+    ['settings', '설정', '백업 · 시세 · 앱 잠금'],
   ];
   return `
     <div class="view-title">더보기</div>

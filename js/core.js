@@ -116,6 +116,29 @@ function renderNav(route) {
   document.getElementById('fund-name').textContent = state.settings.fundName || 'PROJ210';
 }
 
+// 사용자가 버튼으로 요청하는 즉시 시세 갱신 (홈·설정 공용)
+let refreshing = false;
+export async function triggerRefresh() {
+  if (refreshing) return;
+  if (!state.settings.ghPat || !state.settings.ghRepo) { toast('설정에서 시세 저장소를 먼저 연결하세요'); return; }
+  refreshing = true;
+  toast('시세 갱신을 요청했습니다 — 잠시 뒤 반영됩니다');
+  try {
+    await P.forceRefresh(state.settings);
+    // 워크플로가 끝날 즈음 다시 불러와 화면 갱신
+    setTimeout(async () => {
+      await P.load(state.settings);
+      refreshPriceStatus();
+      render();
+      refreshing = false;
+      toast('시세를 갱신했습니다');
+    }, 40000);
+  } catch (e) {
+    refreshing = false;
+    toast('갱신 실패: ' + (e && e.message || e));
+  }
+}
+
 export function refreshPriceStatus() {
   const el = document.getElementById('price-status');
   const u = P.updatedAt();

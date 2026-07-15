@@ -167,6 +167,13 @@ export function marketStatus() {
 const K_LAST_TRIGGER = 'onefund.lastPriceTrigger';
 const REFRESH_MIN_GAP_MS = 2 * 60 * 1000; // 같은 기기에서 최소 2분 간격
 
+// 사용자가 버튼으로 직접 요청하는 즉시 갱신 — 장 시간·쓰로틀 무시하고 무조건 워크플로 실행.
+export async function forceRefresh(cfg) {
+  if (!ghReady(cfg)) throw new Error('시세 저장소가 설정되지 않았습니다');
+  await dispatchRefresh(cfg);
+  localStorage.setItem(K_LAST_TRIGGER, String(Date.now()));
+}
+
 // 앱을 열 때 호출: 정규장이 열린 시장이 하나라도 있으면(그리고 최근에 요청한 적 없으면) 즉시 갱신 트리거.
 // 두 시장 다 마감 상태면 이미 확정 종가를 보유하고 있으므로 트리거하지 않음.
 export async function maybeRefreshLive(cfg) {
