@@ -547,11 +547,7 @@ vSettings.bind_ = (root) => {
     if (krw === null || usd === null) { toast('현금은 0 이상의 숫자로 입력하세요'); return; }
     const date = f.date.value;
     if (!date) { toast('기준일을 입력하세요'); return; }
-    const log = (state.settings.cashLog || []).filter(x => x.date !== date); // 같은 날짜는 덮어쓰기
-    log.push({ date, KRW: krw, USD: usd });
-    log.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
-    state.settings.cashLog = log;
-    state.settings.updatedAt = Date.now();
+    Store.setCash(state, date, krw, usd);
     saveNow(); render();
     toast(`${date} 기준 현금 잔액을 저장했습니다`);
   });

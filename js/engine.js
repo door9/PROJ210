@@ -95,13 +95,19 @@ export function cashLog(state) {
   return [...(state.settings?.cashLog || [])].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
 }
 
-export function cashOn(state, date) {
-  let cur = { KRW: 0, USD: 0 };
+// 그 시점에 적용 중인 입력 한 줄 (없으면 null). 값이 언제 넣은 것인지 표시할 때도 쓴다.
+export function cashEntryOn(state, date) {
+  let cur = null;
   for (const e of cashLog(state)) {
     if (e.date > date) break;
-    cur = { KRW: e.KRW || 0, USD: e.USD || 0 };
+    cur = e;
   }
   return cur;
+}
+
+export function cashOn(state, date) {
+  const e = cashEntryOn(state, date);
+  return { KRW: e?.KRW || 0, USD: e?.USD || 0 };
 }
 
 // 현금을 직접 입력하기 시작한 날 (이 날부터 현금이 평가액에 포함된다). 미입력이면 null.
@@ -143,9 +149,10 @@ export function portfolio(state, date = null) {
   for (const r of rows) hold[r.cur] = (hold[r.cur] || 0) + r.value;
 
   // 현금: 사용자가 직접 입력한 그 시점 잔액 (첫 입력 전이면 0 = 주식만 합산)
-  const cash = cashOn(state, d);
+  const cashEntry = cashEntryOn(state, d);
+  const cash = { KRW: cashEntry?.KRW || 0, USD: cashEntry?.USD || 0 };
   const since = cashSince(state);
-  const cashTracked = !!since && since <= d;
+  const cashTracked = !!cashEntry;
 
   const fx = P.fxOn(d);
   // 통화별 슬리브(보유 주식 + 현금) 수익률 — 환율 개입 없이 통화 내부에서만 계산
@@ -166,8 +173,9 @@ export function portfolio(state, date = null) {
     date: d, rows, cash, cashKRW, investedKRW, totalKRW, fx, sleeves,
     depositKRW: netCap.KRW, depositUSD: netCap.USD,
     holdKRW: hold.KRW || 0, holdUSD: hold.USD || 0, cashUSD: cash.USD,
-    cashTracked,                    // 현금을 직접 입력한 적이 있는가 (없으면 현금 0으로 계산 중)
-    cashSince: since,
+    cashTracked,                    // 그 시점에 적용 중인 현금 입력이 있는가 (없으면 현금 0으로 계산 중)
+    cashSince: since,               // 처음 입력한 날 (이 날부터 현금이 평가액에 포함)
+    cashAsOf: cashEntry?.date || null, // 지금 쓰이는 값을 넣은 날 (표시용 — cashSince와 다를 수 있다)
     deposits: costKRWnow,           // 합산 원가(현재 환율) — 단일 KRW 지표 소비자용
     profit: totalKRW - costKRWnow,  // 합산 손익(환율 영향 제외)
     ret: costKRWnow > 0 ? (totalKRW - costKRWnow) / costKRWnow : null,

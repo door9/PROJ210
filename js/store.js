@@ -25,6 +25,16 @@ export function defaultState() {
   };
 }
 
+// 현금 잔액 입력 한 줄 기록 (같은 기준일이면 덮어쓰기). 홈·설정 양쪽이 공용으로 쓴다.
+// settings는 통째로 동기화되므로 updatedAt 갱신 필수([[memo-updatedat-invariant]]).
+export function setCash(state, date, krw, usd) {
+  const log = (state.settings.cashLog || []).filter(x => x.date !== date);
+  log.push({ date, KRW: krw, USD: usd });
+  log.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  state.settings.cashLog = log;
+  state.settings.updatedAt = Date.now();
+}
+
 // 삭제는 반드시 이 함수로 — tombstone을 남겨 다른 기기에서 부활하지 않게 한다
 export function removeItem(state, coll, id) {
   state[coll] = state[coll].filter(x => x.id !== id);

@@ -26,6 +26,52 @@ function quoteCard() {
     </div>`;
 }
 
+// 현금 잔액 입력 — 홈 표의 현금 행에서 바로 연다. 설정의 '현금 잔액' 카드와 같은 일을 하며
+// 저장은 Store.setCash로 공용(입력 이력·삭제는 설정에서).
+export function openCashModal(focusCur = 'KRW') {
+  const log = E.cashLog(state);
+  const latest = log[log.length - 1] || null;
+  const today = todayStr();
+  const m = openModal(`
+    <h2>현금 잔액</h2>
+    <p class="small muted" style="margin-top:-6px;">계좌의 실제 잔액을 그대로 넣으세요. 앱은 매도 대금을 현금으로 추정하지 않습니다 —
+    입출금·환전·이자를 알 수 없어 추정치는 어차피 틀립니다.
+    ${log.length
+      ? '기준일부터 새 값이 적용되고, 늘거나 준 만큼은 입출금으로 보아 수익에서 제외합니다.'
+      : '<b>처음 입력한 날짜부터</b> 현금이 평가액(총자산·수익률)에 포함되고, 그 전 구간은 보유 주식만 합산합니다.'}</p>
+    <form id="cash-quick">
+      <div class="form-grid">
+        <label class="fld full">기준일
+          <input type="date" name="date" max="${today}" value="${today}" required>
+        </label>
+        <label class="fld">원화 현금 (원)
+          <input name="cashKRW" type="number" step="any" min="0" inputmode="numeric" value="${latest?.KRW ?? ''}" placeholder="0">
+        </label>
+        <label class="fld">달러 현금 ($)
+          <input name="cashUSD" type="number" step="any" min="0" inputmode="decimal" value="${latest?.USD ?? ''}" placeholder="0">
+        </label>
+      </div>
+      <p class="hint" style="margin:2px 0 0;">비워두면 0으로 봅니다. 입력 이력 확인·삭제는 <a href="#/settings">설정</a>에서.</p>
+      <div class="btn-row" style="justify-content:flex-end;">
+        <button type="button" class="btn" data-x="cancel">취소</button>
+        <button type="submit" class="btn primary">저장</button>
+      </div>
+    </form>`);
+  const form = m.querySelector('#cash-quick');
+  const target = focusCur === 'USD' ? form.cashUSD : form.cashKRW;
+  target.focus(); target.select();
+  m.querySelector('[data-x=cancel]').onclick = closeModal;
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const parse = v => { v = v.trim(); if (v === '') return 0; const n = parseFloat(v); return (isNaN(n) || n < 0) ? null : n; };
+    const krw = parse(form.cashKRW.value), usd = parse(form.cashUSD.value);
+    if (krw === null || usd === null) { toast('현금은 0 이상의 숫자로 입력하세요'); return; }
+    Store.setCash(state, form.date.value, krw, usd);
+    saveNow(); closeModal(); render();
+    toast(`${form.date.value} 기준 현금 잔액을 저장했습니다`);
+  });
+}
+
 function vHome() {
   if (!state.trades.length) {
     return `
@@ -71,19 +117,17 @@ function vHome() {
       <td class="num">${fmtMoney(r.value, r.cur)}<br><span class="muted small">${(r.weight * 100).toFixed(1)}%</span></td>
       <td class="num ${pctClass(r.ret)}">${fmtPct(r.ret)}</td>
     </tr>`).join('');
-  // 현금 잔액 — 사용자가 직접 입력한 값만 (앱은 매도 대금을 현금으로 추정하지 않는다)
+  // 현금 잔액 — 사용자가 직접 입력한 값만 (앱은 매도 대금을 현금으로 추정하지 않는다).
+  // 잔액이 0이어도, 아직 입력 전이어도 두 행은 항상 둔다 — 눌러서 바로 고칠 자리이자,
+  // 행이 사라지면 "현금이 없다"와 "안 세고 있다"가 구별되지 않기 때문.
   const cashRow = (label, amt, curc) => `
-    <tr>
-      <td><b>${label}</b><br><span class="muted small">${pf.cashSince} 입력</span></td>
+    <tr class="row-link" data-cash="${curc}">
+      <td><b>${label}</b> <span class="chev">›</span><br><span class="muted small">${pf.cashTracked ? esc(pf.cashAsOf) + ' 입력' : '미입력 — 눌러서 설정'}</span></td>
       <td class="num">–</td>
       <td class="num">${fmtMoney(amt, curc)}</td>
       <td class="num">–</td>
     </tr>`;
-  const cashRows = !pf.cashTracked ? '' : [
-    pf.cash.KRW > 1 ? cashRow('원화 현금', pf.cash.KRW, 'KRW') : '',
-    pf.cash.USD > 0.01 ? cashRow('달러 현금', pf.cash.USD, 'USD') : '',
-  ].join('');
-  const hasHoldingsOrCash = pf.rows.length || cashRows;
+  const cashRows = cashRow('원화 현금', pf.cash.KRW, 'KRW') + cashRow('달러 현금', pf.cash.USD, 'USD');
 
   // 투입 원금·수익률: 통화별로 분리 (달러는 환산하지 않고 그대로)
   const sK = pf.sleeves.KRW, sU = pf.sleeves.USD;
@@ -132,9 +176,10 @@ function vHome() {
     <p class="small muted" style="margin:6px 2px 14px;">자세한 곡선은 <a href="#/worlds">평행우주</a>에서.</p>` : ''}
     <div class="card">
       <h3>보유 종목</h3>
-      ${hasHoldingsOrCash ? `<div class="tbl-wrap"><table class="tbl">
+      <div class="tbl-wrap"><table class="tbl">
         <tr><th>종목</th><th class="num">수량</th><th class="num">평가액</th><th class="num">수익률</th></tr>
-        ${holdRows}${cashRows}</table></div>` : `<div class="empty">보유 종목이 없습니다</div>`}
+        ${holdRows || '<tr><td colspan="4" class="muted">보유 중인 종목이 없습니다</td></tr>'}${cashRows}
+      </table></div>
     </div>
     <div class="btn-row">
       <button class="btn primary" data-act="buy">매수 기록</button>
@@ -144,6 +189,7 @@ function vHome() {
 }
 vHome.bind_ = (root) => {
   root.querySelectorAll('.row-link[data-sym]').forEach(tr => tr.addEventListener('click', () => go('symbol/' + encodeURIComponent(tr.dataset.sym))));
+  root.querySelectorAll('.row-link[data-cash]').forEach(tr => tr.addEventListener('click', () => openCashModal(tr.dataset.cash)));
   root.querySelector('[data-act=requote]')?.addEventListener('click', render);
   root.querySelector('[data-act=refresh]')?.addEventListener('click', triggerRefresh);
   root.querySelector('[data-act=first-trade]')?.addEventListener('click', () => openTradeForm('buy'));
