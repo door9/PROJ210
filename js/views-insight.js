@@ -7,7 +7,7 @@ import { uid, todayStr, esc, fmtMoney, fmtPct, fmtQty, pctClass } from './util.j
 import { lineChart, moneyShort } from './chart.js';
 
 const C = {
-  actual: '#0f9d6a', neverSell: '#c8871a', kospi: '#8a8a8a', sp500: '#8b5cc9', bank: '#3b7ea1', deposits: '#c65ea8',
+  actual: '#0f9d6a', kospi: '#8a8a8a', sp500: '#8b5cc9', bank: '#3b7ea1', deposits: '#c65ea8',
 };
 
 // ---------- 평행우주 ----------
@@ -21,7 +21,6 @@ function vWorlds() {
   const li = w.dates.length - 1;
   const rows = [
     ['실제의 나', w.actual[li], C.actual, '기록한 그대로. 매도 대금은 현금으로 보관'],
-    ['손 안 댄 나', w.neverSell[li], C.neverSell, '내가 넣은 돈으로 산 것을 한 번도 팔지 않고 그대로 뒀다면 (재투자한 매도 대금은 제외)'],
     ['코스피만 산 나', w.kospi[li], C.kospi, '같은 날 같은 금액으로 코스피 지수만 매수'],
     ['S&P500만 산 나', w.sp500[li], C.sp500, '같은 날 같은 금액으로 S&P500만 매수'],
     ['예금만 한 나', w.bank[li], C.bank, `같은 날 같은 금액을 연 ${w.rate}% 예금에 (설정에서 금리 변경)`],
@@ -33,7 +32,6 @@ function vWorlds() {
     labels: w.dates,
     series: [
       { label: '실제의 나', color: C.actual, values: w.actual },
-      { label: '손 안 댄 나', color: C.neverSell, values: w.neverSell },
       { label: '코스피만', color: C.kospi, values: w.kospi },
       { label: 'S&P500만', color: C.sp500, values: w.sp500 },
       { label: '예금만', color: C.bank, values: w.bank },
@@ -41,16 +39,9 @@ function vWorlds() {
     ],
   });
 
-  const diff = w.actual[li] - w.neverSell[li];
-  const verdict = Math.abs(diff) < dep * 0.005
-    ? '지금까지의 매도 판단은 결과적으로 큰 차이를 만들지 않았습니다.'
-    : diff > 0
-      ? `당신의 매도 판단은 지금까지 <b class="up">${fmtMoney(diff)}</b>만큼 가치를 <b>지켰습니다</b>.`
-      : `한 번도 팔지 않았다면 지금 <b class="down">${fmtMoney(-diff)}</b>이 더 있었을 것입니다. 판다는 행위가 그만큼을 <b>깎았습니다</b>.`;
-
   return `
     <div class="view-title">평행우주</div>
-    <p class="view-desc">같은 매수를 한 네 명의 나. 계좌 잔고는 누구나 보지만, 대안과의 차이는 아무도 보여주지 않습니다.</p>
+    <p class="view-desc">같은 돈으로 다르게 했다면. 계좌 잔고는 누구나 보지만, 대안과의 차이는 아무도 보여주지 않습니다.</p>
     <div class="card">${chart}</div>
     <div class="card">
       <h3>현재 가치 (투입 원금 ${fmtMoney(dep)})</h3>
@@ -64,7 +55,6 @@ function vWorlds() {
             <td class="num ${pctClass(v - rows[0][1])}">${label === '실제의 나' ? '—' : fmtMoney(v - rows[0][1])}</td>
           </tr>`).join('')}
       </table></div>
-      <p class="small" style="margin-bottom:0;">${verdict}</p>
       <p class="hint">가정: 모든 매수는 새 돈 · 배당 재투자 · 매도 대금은 무이자 현금 · 달러는 당일 환율 환산 · 예금은 연 ${w.rate}% 복리(세전). 세계 간 조건은 동일하므로 비교는 공정합니다.</p>
     </div>
     <p class="small muted" style="margin:0 2px;">매도·물타기 하나하나의 채점은 <a href="#/actions">개입 점수</a>에서.</p>`;

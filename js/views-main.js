@@ -36,7 +36,7 @@ function vHome() {
         <h3>아직 기록이 없습니다</h3>
         <p class="small muted" style="margin:6px 0 0;">
           이 앱은 매매의 <b>결과</b>가 아니라 <b>판단</b>을 기록하고, 시간이 지난 뒤 그 판단을 채점합니다.<br><br>
-          · <b>평행우주</b> — 안 팔았다면, 지수만 샀다면 지금 얼마인가<br>
+          · <b>평행우주</b> — 지수만 샀다면·예금만 했다면 지금 얼마인가<br>
           · <b>개입 점수</b> — 내 매도·물타기가 돈을 벌었나 까먹었나<br>
           · <b>홀딩 일지</b> — 흔들린 순간이 신호였나 소음이었나<br>
           · <b>투자 헌법</b> — 내 원칙을 어겼는지 자동 감시, 원칙 자체도 검증<br>
@@ -120,7 +120,6 @@ function vHome() {
       </div>
     </a>` : ''}
     ${w ? `<div class="kpis">
-      <div class="kpi"><div class="k">한 번도 안 팔았다면</div><div class="v">${moneyKorean(w.neverSell[li])}</div><div class="s ${pctClass(w.neverSell[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.neverSell[li] - w.actual[li])}</div></div>
       <div class="kpi"><div class="k">코스피만 샀다면</div><div class="v">${moneyKorean(w.kospi[li])}</div><div class="s ${pctClass(w.kospi[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.kospi[li] - w.actual[li])}</div></div>
       <div class="kpi"><div class="k">S&P500만 샀다면</div><div class="v">${moneyKorean(w.sp500[li])}</div><div class="s ${pctClass(w.sp500[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.sp500[li] - w.actual[li])}</div></div>
       <div class="kpi"><div class="k">예금만 했다면 (연 ${w.rate}%)</div><div class="v">${moneyKorean(w.bank[li])}</div><div class="s ${pctClass(w.bank[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.bank[li] - w.actual[li])}</div></div>
