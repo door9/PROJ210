@@ -1,5 +1,5 @@
 // 화면: 홈(대시보드), 기록(매매 목록 + 입력 폼)
-import { state, saveNow, toast, openModal, closeModal, confirmModal, registerView, render, go, triggerRefresh } from './core.js';
+import { state, saveNow, toast, openModal, closeModal, confirmModal, registerView, render, go } from './core.js';
 import * as Store from './store.js';
 import * as P from './prices.js';
 import * as E from './engine.js';
@@ -151,10 +151,7 @@ function vHome() {
   ].filter(Boolean).join(' · ');
 
   return `
-    <div class="view-title split">
-      <span>${esc(state.settings.fundName || 'PROJ210')}</span>
-      <button class="btn small" data-act="refresh" title="시세 지금 갱신">↻ 시세</button>
-    </div>
+    <div class="view-title">${esc(state.settings.fundName || 'PROJ210')}</div>
     <p class="view-desc">기준일 ${pf.date} · 배당 재투자 가정 · 달러는 당일 환율 환산</p>
     ${quoteCard()}
     ${alerts.join('')}
@@ -202,7 +199,6 @@ vHome.bind_ = (root) => {
   root.querySelectorAll('.row-link[data-sym]').forEach(tr => tr.addEventListener('click', () => go('symbol/' + encodeURIComponent(tr.dataset.sym))));
   root.querySelectorAll('.row-link[data-cash]').forEach(tr => tr.addEventListener('click', () => openCashModal(tr.dataset.cash)));
   root.querySelector('[data-act=requote]')?.addEventListener('click', render);
-  root.querySelector('[data-act=refresh]')?.addEventListener('click', triggerRefresh);
   root.querySelector('[data-act=first-trade]')?.addEventListener('click', () => openTradeForm('buy'));
   root.querySelector('[data-act=buy]')?.addEventListener('click', () => openTradeForm('buy'));
   root.querySelector('[data-act=sell]')?.addEventListener('click', () => openTradeForm('sell'));

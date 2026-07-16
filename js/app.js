@@ -4,7 +4,7 @@ import * as Dbx from './dropbox.js';
 import * as Sync from './sync.js';
 import * as Store from './store.js';
 import * as Lock from './lock.js';
-import { state, render, refreshPriceStatus, toast } from './core.js';
+import { state, render, refreshPriceStatus, initTopbar, toast } from './core.js';
 import './views-main.js';
 import './views-insight.js';
 import './views-write.js';
@@ -33,6 +33,7 @@ async function init() {
     Store.save(state);
   }
   refreshPriceStatus();
+  initTopbar();
   render();
   window.addEventListener('hashchange', render);
   if (justConnected) toast('Dropbox에 연결됐습니다. 이제 기기 간 동기화됩니다.');

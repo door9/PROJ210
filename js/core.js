@@ -116,12 +116,20 @@ function renderNav(route) {
   document.getElementById('fund-name').textContent = state.settings.fundName || 'PROJ210';
 }
 
-// 사용자가 버튼으로 요청하는 즉시 시세 갱신 (홈·설정 공용)
+// 사용자가 버튼으로 요청하는 즉시 시세 갱신 (상단바·설정 공용)
 let refreshing = false;
+// 갱신은 워크플로가 도는 40초쯤 걸린다. 버튼에 글자가 없으므로 돌려서 진행 중임을 알린다.
+function setRefreshingUI(on) {
+  const btn = document.getElementById('price-refresh');
+  if (!btn) return;
+  btn.classList.toggle('spinning', on);
+  btn.disabled = on;
+}
 export async function triggerRefresh() {
   if (refreshing) return;
   if (!state.settings.ghPat || !state.settings.ghRepo) { toast('설정에서 시세 저장소를 먼저 연결하세요'); return; }
   refreshing = true;
+  setRefreshingUI(true);
   toast('시세 갱신을 요청했습니다 — 잠시 뒤 반영됩니다');
   try {
     await P.forceRefresh(state.settings);
@@ -131,10 +139,12 @@ export async function triggerRefresh() {
       refreshPriceStatus();
       render();
       refreshing = false;
+      setRefreshingUI(false);
       toast('시세를 갱신했습니다');
     }, 40000);
   } catch (e) {
     refreshing = false;
+    setRefreshingUI(false);
     toast('갱신 실패: ' + (e && e.message || e));
   }
 }
@@ -143,9 +153,13 @@ export function refreshPriceStatus() {
   const el = document.getElementById('price-status');
   const u = P.updatedAt();
   if (!u) { el.textContent = '시세 없음'; return; }
-  const mm = String(u.getMonth() + 1).padStart(2, '0');
-  const dd = String(u.getDate()).padStart(2, '0');
-  const hh = String(u.getHours()).padStart(2, '0');
-  const mi = String(u.getMinutes()).padStart(2, '0');
-  el.innerHTML = `시세 갱신<br>${mm}.${dd} ${hh}:${mi}`;
+  const p2 = n => String(n).padStart(2, '0');
+  const stamp = `${u.getFullYear()}-${p2(u.getMonth() + 1)}-${p2(u.getDate())} ${p2(u.getHours())}:${p2(u.getMinutes())}`;
+  el.innerHTML = `시세 기준 시간<br>${stamp}`;
+}
+
+// 상단바의 시세 갱신 버튼 — 어느 화면에서든 항상 같은 자리에 있다.
+export function initTopbar() {
+  const btn = document.getElementById('price-refresh');
+  if (btn) btn.addEventListener('click', triggerRefresh);
 }
