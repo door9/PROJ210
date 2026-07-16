@@ -222,11 +222,26 @@ function rowOn(sym, date) {
 export function closeOn(sym, date) { const r = rowOn(sym, date); return r ? r[1] : null; }
 export function adjOn(sym, date) { const r = rowOn(sym, date); return r ? r[2] : null; }
 
+// 마지막 시세의 거래소 현지 시각 'HH:MM'(24시간). 시세 시각이 마지막 봉의 날짜와 다르면
+// (야후가 그날 봉을 빠뜨려 옛 봉을 들고 있는 경우) 시간을 붙이면 거짓이 되므로 null.
+// 날짜(closes[0])도 거래소 현지 기준이라 시간도 같은 기준으로 맞춘다 — 미국 종목은 16:00 ET.
+function quoteHM(d, lastDate) {
+  if (!d.quoteTime) return null;
+  const s = new Date((d.quoteTime + (d.gmtoffset || 0)) * 1000).toISOString();
+  return s.slice(0, 10) === lastDate ? s.slice(11, 16) : null;
+}
+
 export function last(sym) {
   const d = map.get(sym);
   if (!d || !d.closes.length) return null;
   const r = d.closes[d.closes.length - 1];
-  return { date: r[0], close: r[1], adj: r[2] };
+  return { date: r[0], close: r[1], adj: r[2], time: quoteHM(d, r[0]) };
+}
+
+// "2026-07-16 15:30" (시각을 모르면 날짜만) — 거래소 현지 기준
+export function lastStamp(sym) {
+  const l = last(sym);
+  return l ? l.date + (l.time ? ' ' + l.time : '') : null;
 }
 export function firstDate(sym) {
   const d = map.get(sym);

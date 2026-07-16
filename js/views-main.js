@@ -303,6 +303,7 @@ function vSymbol(symbol) {
   const pf = E.portfolio(state);
   const pos = pf.rows.find(r => r.symbol === symbol);
   const last = P.last(symbol);
+  const frozen = P.frozenSince(symbol);
 
   const stat = (k, v, cls = '') => `<tr><td class="muted">${k}</td><td class="num ${cls}"><b>${v}</b></td></tr>`;
   const summary = `
@@ -320,7 +321,7 @@ function vSymbol(symbol) {
 
   return `
     <div class="view-title">${esc(name)}</div>
-    <p class="view-desc">${esc(symbol)}${last ? ` · 현재가 ${fmtMoney(last.close, cur)} <span class="muted">(${last.date})</span>` : ' · 시세 없음'}</p>
+    <p class="view-desc">${esc(symbol)}${last ? ` · 현재가 ${fmtMoney(last.close, cur)} <span class="muted">(${P.lastStamp(symbol)})</span>` : ' · 시세 없음'}${frozen ? ` <span class="tag warn">${frozen}부터 시세 멈춤</span>` : ''}</p>
     <div class="card"><h3>현황</h3>${summary}</div>
     <div class="card"><h3>매매 기록 (${symTrades.length}건)</h3>${items}</div>
     <div class="btn-row"><a class="btn" href="#/home">← 홈으로</a></div>`;
@@ -421,7 +422,7 @@ export function openTradeForm(side, existing = null) {
     if (info) {
       if (nameHint) nameHint.textContent = `— ${info.name}`; // 종목명 자동
       const l = P.last(sym);
-      curHint.textContent = `· ${info.currency}${l ? ` · 최근 종가 ${fmtMoney(l.close, info.currency)} (${l.date})` : ''}`;
+      curHint.textContent = `· ${info.currency}${l ? ` · 최근 종가 ${fmtMoney(l.close, info.currency)} (${P.lastStamp(sym)})` : ''}`;
       // 날짜의 종가 자동 제안 (가격 비어 있을 때)
       if (!form.price.value) {
         const c = P.closeOn(sym, form.date.value || today);
