@@ -151,8 +151,6 @@ function vHome() {
   ].filter(Boolean).join(' · ');
 
   return `
-    <div class="view-title">${esc(state.settings.fundName || 'PROJ210')}</div>
-    <p class="view-desc">기준일 ${pf.date} · 배당 재투자 가정 · 달러는 당일 환율 환산</p>
     ${quoteCard()}
     ${alerts.join('')}
     <div class="card hero">
