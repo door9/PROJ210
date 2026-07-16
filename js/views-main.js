@@ -129,14 +129,26 @@ function vHome() {
     </tr>`;
   const cashRows = cashRow('원화 현금', pf.cash.KRW, 'KRW') + cashRow('달러 현금', pf.cash.USD, 'USD');
 
-  // 투입 원금·수익률: 통화별로 분리 (달러는 환산하지 않고 그대로)
+  // 투입 원금·평가 금액·수익률: 통화별로 분리 (달러는 환산하지 않고 그대로).
+  // 세 줄이 같은 기준이라 위아래로 읽힌다 — 투입 원금 → 평가 금액 → 그 둘의 비율(수익률).
   const sK = pf.sleeves.KRW, sU = pf.sleeves.USD;
-  const depStr = [pf.depositKRW > 0 ? fmtMoney(pf.depositKRW) : null,
-                  pf.depositUSD > 0 ? fmtMoney(pf.depositUSD, 'USD') : null].filter(Boolean).join(' + ') || fmtMoney(0);
-  const retParts = [];
-  if (sK.has && sK.ret != null) retParts.push(`원화 <b class="${pctClass(sK.ret)}">${fmtPct(sK.ret)}</b>`);
-  if (sU.has && sU.ret != null) retParts.push(`달러 <b class="${pctClass(sU.ret)}">${fmtPct(sU.ret)}</b>`);
   const bothCur = sK.has && sU.has;
+  // 통화별 금액을 "₩X + $Y"로. 한 통화만 쓰면 그 통화만 나온다.
+  const byCur = (krw, usd) => [sK.has ? fmtMoney(krw) : null,
+                               sU.has ? fmtMoney(usd, 'USD') : null].filter(Boolean).join(' + ') || fmtMoney(0);
+  const depStr = byCur(pf.depositKRW, pf.depositUSD);
+  const valStr = byCur(sK.value, sU.value);   // 평가 금액 = 보유 주식 + 현금 (수익률과 같은 기준)
+
+  const retParts = [];
+  if (sK.has && sK.ret != null) retParts.push(`₩ <b class="${pctClass(sK.ret)}">${fmtPct(sK.ret)}</b>`);
+  if (sU.has && sU.ret != null) retParts.push(`$ <b class="${pctClass(sU.ret)}">${fmtPct(sU.ret)}</b>`);
+  if (bothCur && pf.ret != null) retParts.push(`합 <b class="${pctClass(pf.ret)}">${fmtPct(pf.ret)}</b> <span class="muted">(환율 영향 제외)</span>`);
+
+  // 제목 줄: 현금이 들어갔는지 + 달러가 있으면 환율. 현금 미입력이면 사실대로 '미포함'.
+  const heroNote = [
+    pf.cashTracked ? '현금 포함' : '현금 미포함',
+    sU.has && pf.fx ? `환율 ${fmtFx(pf.fx)}` : null,
+  ].filter(Boolean).join(' · ');
 
   return `
     <div class="view-title split">
@@ -147,14 +159,13 @@ function vHome() {
     ${quoteCard()}
     ${alerts.join('')}
     <div class="card hero">
-      <div class="row"><span>투입 원금 ${depStr}</span></div>
+      <div class="row"><span class="muted small">보유 평가액 (${heroNote})</span></div>
       <div class="big">${fmtMoney(pf.totalKRW)}</div>
-      <div class="row"><span class="muted small">${pf.cashTracked ? '총자산 = 보유 평가액 + 현금' : '보유 평가액 (현금 미포함)'}</span></div>
-      <div class="row" style="margin-top:6px;">
-        <span>수익률 ${retParts.join(' · ') || '–'}</span>
-        ${bothCur && pf.ret != null ? `<span class="muted">· 합산 <b class="${pctClass(pf.ret)}">${fmtPct(pf.ret)}</b> (환율 영향 제외)</span>` : ''}
-      </div>
-      ${bothCur ? `<div class="row muted small">보유 평가액: 원화 ${fmtMoney(pf.holdKRW)} + 달러 ${fmtMoney(pf.holdUSD, 'USD')}${pf.fx ? ` · 환율 ₩${fmtFx(pf.fx)}` : ''}</div>` : ''}
+      <dl class="hero-facts">
+        <dt>투입 원금</dt><dd>${depStr}</dd>
+        <dt>평가 금액</dt><dd>${valStr}</dd>
+        <dt>수익 결산</dt><dd>${retParts.join(' · ') || '–'}</dd>
+      </dl>
     </div>
     ${ln ? `<a href="#/cost" class="card loan-card" style="display:block; text-decoration:none; color:inherit;">
       <div class="trade-head">

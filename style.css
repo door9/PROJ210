@@ -89,6 +89,14 @@ main#view {
 .hero { text-align: left; }
 .hero .big { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin: 2px 0; }
 .hero .row { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--sub); font-size: 13.5px; }
+/* 큰 숫자 아래 '투입 원금 / 평가 금액 / 수익 결산' — 라벨 열을 맞춰 세로로 읽히게 */
+.hero-facts {
+  display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px;
+  margin: 10px 0 0; font-size: 13.5px;
+}
+.hero-facts dt { color: var(--sub); white-space: nowrap; }
+.hero-facts dt::after { content: ':'; }
+.hero-facts dd { margin: 0; }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
 .kpi .k { color: var(--sub); font-size: 12px; }
