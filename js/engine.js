@@ -1,8 +1,10 @@
 // 계산 엔진: 포트폴리오, 평행우주, 개입 점수, 헌법 검사, 서한/AI 데이터 팩
 //
 // 회계 가정(단순함을 위해 고정, UI에 명시):
-//  - 모든 매수는 "새 돈"으로 본다. 매도 대금은 포트폴리오 안에 무이자 현금으로 쌓인다.
-//  - 보유분 평가는 수정종가(배당·분할 반영) 성장배수 × 매수원가. 즉 배당 재투자 가정.
+//  - 평가액 = 그 시점 보유 주식 + 그 시점 현금. 현금은 사용자가 직접 입력한 값만 쓴다
+//    (settings.cashLog). 매도 대금을 앱이 현금으로 추정하지 않는다 — 실제 계좌 잔액은
+//    입출금·환전·이자 때문에 앱이 알 수 없고, 추정치를 자산에 얹으면 거짓말이 된다.
+//  - 보유분 평가는 수정종가(배당·분할·병합 반영) 성장배수 × 매수원가. 즉 배당 재투자 가정.
 //  - 달러 자산은 해당일 환율로 원화 환산.
 
 import * as P from './prices.js';
@@ -62,24 +64,49 @@ function lotValue(lot, date) {
   return { cur: P.currencyOf(lot.t.symbol), cost, value: g ? cost * g : cost, hasPrice: !!g };
 }
 
-// 통화별 순 투입 원금·잔여 현금. 매수는 같은 통화의 매도 대금(현금)으로 먼저 충당하므로
-// 팔고 다시 사는 것이 원금·현금을 부풀리지 않는다(재투자분 이중계상 방지). trades는 날짜순.
+// 통화별 순 투입 원금 = 밖에서 새로 끌어온 돈. 매수는 같은 통화의 앞선 매도 대금으로 먼저
+// 충당한 것으로 보므로, 팔고 다시 사는 것이 원금을 부풀리지 않는다(재투자분 이중계상 방지).
+//
+// 여기 나오는 pool은 '재투자 가능한 매도 대금'을 추적하는 내부 장부일 뿐, 계좌의 현금 잔액이
+// 아니다(사용자가 뺐을 수도, 더 넣었을 수도 있다). 자산으로 쓰지 말 것 — 현금은 cashOn()이 답한다.
+// trades는 날짜순.
 function capitalFlow(trades, upto) {
-  const cash = { KRW: 0, USD: 0 };
+  const pool = { KRW: 0, USD: 0 };
   const netCap = { KRW: 0, USD: 0 };
   for (const t of trades) {
     if (t.date > upto) break;
     const cur = P.currencyOf(t.symbol);
     if (t.side === 'buy') {
       const cost = t.price * t.qty + (t.fee || 0);
-      const fromCash = Math.min(cash[cur], cost);
-      cash[cur] -= fromCash;
-      netCap[cur] += cost - fromCash;
+      const fromPool = Math.min(pool[cur], cost);
+      pool[cur] -= fromPool;
+      netCap[cur] += cost - fromPool;
     } else {
-      cash[cur] += t.price * t.qty - (t.fee || 0);
+      pool[cur] += t.price * t.qty - (t.fee || 0);
     }
   }
-  return { cash, netCap };
+  return { pool, netCap };
+}
+
+// ---- 현금: 사용자가 직접 입력한 잔액 -------------------------------------------
+// settings.cashLog = [{date, KRW, USD}] — 입력할 때마다 한 줄씩 쌓인다.
+// 특정 시점의 현금 = 그 날짜 이하 마지막 입력값. 첫 입력 전에는 현금 0(= 주식만 합산).
+export function cashLog(state) {
+  return [...(state.settings?.cashLog || [])].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+}
+
+export function cashOn(state, date) {
+  let cur = { KRW: 0, USD: 0 };
+  for (const e of cashLog(state)) {
+    if (e.date > date) break;
+    cur = { KRW: e.KRW || 0, USD: e.USD || 0 };
+  }
+  return cur;
+}
+
+// 현금을 직접 입력하기 시작한 날 (이 날부터 현금이 평가액에 포함된다). 미입력이면 null.
+export function cashSince(state) {
+  return cashLog(state)[0]?.date || null;
 }
 
 // ---- 포트폴리오 ------------------------------------------------------------
@@ -108,15 +135,20 @@ export function portfolio(state, date = null) {
   rows.forEach(r => r.weight = investedKRW > 0 ? (r.valueKRW || 0) / investedKRW : 0);
   rows.sort((a, b) => (b.valueKRW || 0) - (a.valueKRW || 0));
 
-  // 통화별 순 투입 원금·잔여 현금 (투입 원금은 환산하지 않고 통화 그대로 집계)
-  const { cash, netCap } = capitalFlow(trades, d);
+  // 통화별 순 투입 원금 (투입 원금은 환산하지 않고 통화 그대로 집계)
+  const { netCap } = capitalFlow(trades, d);
 
   // 보유 종목 평가액(통화별, 현지 통화)
   const hold = { KRW: 0, USD: 0 };
   for (const r of rows) hold[r.cur] = (hold[r.cur] || 0) + r.value;
 
+  // 현금: 사용자가 직접 입력한 그 시점 잔액 (첫 입력 전이면 0 = 주식만 합산)
+  const cash = cashOn(state, d);
+  const since = cashSince(state);
+  const cashTracked = !!since && since <= d;
+
   const fx = P.fxOn(d);
-  // 통화별 슬리브(보유 + 잔여현금) 수익률 — 환율 개입 없이 통화 내부에서만 계산
+  // 통화별 슬리브(보유 주식 + 현금) 수익률 — 환율 개입 없이 통화 내부에서만 계산
   const sleeves = {};
   for (const cur of ['KRW', 'USD']) {
     const value = (hold[cur] || 0) + cash[cur];
@@ -130,28 +162,38 @@ export function portfolio(state, date = null) {
   // (환전 시점 환율을 추적하지 않으므로 실제 환차익은 계산 불가 → 원가·평가를 같은 현재 환율로 환산)
   const costKRWnow = netCap.KRW + (P.toKRW(netCap.USD, 'USD', d) || 0);
 
-  // 표시용 현금: settings.manualCash가 있으면 통화별로 그 값을 쓴다(없으면 자동=미재투자 매도대금).
-  // 이건 '현재 계좌 잔액' 표시·총자산용이며, 수익률·평행우주 등 성과 지표는 위의 자동 현금을 그대로 쓴다
-  // (인출한 돈도 실현 수익이므로 성과에서 빼면 안 됨).
-  const mc = state.settings?.manualCash || {};
-  const dispCash = {
-    KRW: mc.KRW != null ? mc.KRW : cash.KRW,
-    USD: mc.USD != null ? mc.USD : cash.USD,
-  };
-  const dispCashKRW = dispCash.KRW + (P.toKRW(dispCash.USD, 'USD', d) || 0);
-
   return {
     date: d, rows, cash, cashKRW, investedKRW, totalKRW, fx, sleeves,
     depositKRW: netCap.KRW, depositUSD: netCap.USD,
     holdKRW: hold.KRW || 0, holdUSD: hold.USD || 0, cashUSD: cash.USD,
-    displayCash: dispCash, displayCashKRW: dispCashKRW,
-    accountValueKRW: investedKRW + dispCashKRW,   // 총자산 = 보유 평가액 + 표시 현금
-    manualCash: { KRW: mc.KRW ?? null, USD: mc.USD ?? null },
+    cashTracked,                    // 현금을 직접 입력한 적이 있는가 (없으면 현금 0으로 계산 중)
+    cashSince: since,
     deposits: costKRWnow,           // 합산 원가(현재 환율) — 단일 KRW 지표 소비자용
     profit: totalKRW - costKRWnow,  // 합산 손익(환율 영향 제외)
     ret: costKRWnow > 0 ? (totalKRW - costKRWnow) / costKRWnow : null,
     realized,
   };
+}
+
+// 밖에서 새로 끌어온 돈만 뽑아낸다 — 매도 대금으로 다시 산 것은 새 투입이 아니다.
+// 이걸 안 하면 팔고 사기를 반복한 횟수만큼 '투입 원금'이 불어나, 평행우주의 지수·예금
+// 세계가 실제로는 넣은 적 없는 돈까지 굴린 것처럼 부풀려진다. [{date, cur, amt, amtKRW}]
+export function externalContributions(trades) {
+  const pool = { KRW: 0, USD: 0 };
+  const ev = [];
+  for (const t of trades) {
+    const cur = P.currencyOf(t.symbol);
+    if (t.side === 'buy') {
+      const cost = t.price * t.qty + (t.fee || 0);
+      const fromPool = Math.min(pool[cur], cost);
+      pool[cur] -= fromPool;
+      const ext = cost - fromPool;
+      if (ext > 1e-9) ev.push({ date: t.date, cur, amt: ext, amtKRW: P.toKRW(ext, cur, t.date) || 0 });
+    } else {
+      pool[cur] += t.price * t.qty - (t.fee || 0);
+    }
+  }
+  return ev;
 }
 
 // ---- 평행우주 ---------------------------------------------------------------
@@ -170,43 +212,42 @@ export function worlds(state) {
   for (const t of trades) set.add(t.date);
   const dates = [...set].sort();
 
+  // 모든 세계는 "밖에서 새로 넣은 돈"만 굴린다 — 실제의 나와 조건을 맞춰야 비교가 공정하다
+  const contribs = externalContributions(trades);
+
   // 지수 세계의 매입 단위 미리 계산
   const kUnits = [], sUnits = [];
-  for (const b of buys) {
-    const amtCur = b.price * b.qty + (b.fee || 0);
-    const cur = P.currencyOf(b.symbol);
-    const amtKRW = P.toKRW(amtCur, cur, b.date) || 0;
-    const k = P.closeOn('^KS11', b.date);
-    if (k) kUnits.push({ date: b.date, units: amtKRW / k });
-    const fx = P.fxOn(b.date);
-    const amtUSD = cur === 'USD' ? amtCur : (fx ? amtKRW / fx : 0);
-    const s = P.closeOn('^GSPC', b.date);
-    if (s) sUnits.push({ date: b.date, units: amtUSD / s });
+  for (const c of contribs) {
+    const k = P.closeOn('^KS11', c.date);
+    if (k) kUnits.push({ date: c.date, units: c.amtKRW / k });
+    const fx = P.fxOn(c.date);
+    const amtUSD = c.cur === 'USD' ? c.amt : (fx ? c.amtKRW / fx : 0);
+    const s = P.closeOn('^GSPC', c.date);
+    if (s) sUnits.push({ date: c.date, units: amtUSD / s });
   }
 
   const rate = (state.settings?.depositRate ?? 3) / 100; // 정기예금 가정 금리(연, 복리)
   const out = { dates, deposits: [], actual: [], kospi: [], sp500: [], bank: [], rate: rate * 100 };
   for (const d of dates) {
-    // 투입 원금 + 정기예금 세계(같은 날 같은 금액을 연 rate% 복리로)
+    // 투입 원금 + 예금 세계(같은 날 같은 금액을 연 rate% 복리로)
     let dep = 0, bank = 0;
-    for (const b of buys) {
-      if (b.date > d) break;
-      const amt = P.toKRW(b.price * b.qty + (b.fee || 0), P.currencyOf(b.symbol), b.date) || 0;
-      dep += amt;
-      bank += amt * Math.pow(1 + rate, daysBetween(b.date, d) / 365);
+    for (const c of contribs) {
+      if (c.date > d) break;
+      dep += c.amtKRW;
+      bank += c.amtKRW * Math.pow(1 + rate, daysBetween(c.date, d) / 365);
     }
     out.deposits.push(dep);
     out.bank.push(bank);
 
-    // 실제의 나 = 보유 종목 평가액 + 잔여 현금(재투자분은 이미 보유에 반영되므로 이중계상 금지)
+    // 실제의 나 = 보유 종목 평가액 + 그 시점 현금(직접 입력한 값, 미입력 구간은 0)
     const { open } = replay(trades, d);
     let v = 0;
     for (const lot of open) {
       const lv = lotValue(lot, d);
       v += P.toKRW(lv.value, lv.cur, d) || 0;
     }
-    const { cash: liveCash } = capitalFlow(trades, d);
-    v += (liveCash.KRW || 0) + (P.toKRW(liveCash.USD, 'USD', d) || 0);
+    const c = cashOn(state, d);
+    v += (c.KRW || 0) + (P.toKRW(c.USD, 'USD', d) || 0);
     out.actual.push(v);
 
     // 지수만 산 나
@@ -225,6 +266,10 @@ export function worlds(state) {
 
 // ---- 개입 점수 ---------------------------------------------------------------
 // 매도 채점: "판 뒤 그 주식이 어떻게 됐나" (수정종가 기준)
+// 잘한 매도인지 아닌지는 판정하지 않는다 — 판 돈을 어디에 썼는지·왜 팔았는지를 모르는 채로
+// "지금 오르면 이른 매도"라고 부르는 건 채점이 아니라 뒷북이다. 변화만 보여주고 판단은 사용자 몫.
+export const SELL_HORIZONS = [1, 3, 6, 12];
+
 export function sellScores(state) {
   const trades = sortedTrades(state);
   const { realized } = replay(trades);
@@ -232,17 +277,21 @@ export function sellScores(state) {
   const rows = realized.map(r => {
     const sym = r.sell.symbol;
     const horizon = {};
-    for (const m of [3, 6, 12]) {
+    for (const m of SELL_HORIZONS) {
       const d = addMonthsStr(r.sell.date, m);
       horizon['m' + m] = d <= today ? P.growth(sym, r.sell.date, d) : null;
     }
     horizon.now = P.growth(sym, r.sell.date);
-    return { r, sym, name: r.sell.name || sym, horizon };
+    return {
+      r, sym, name: r.sell.name || sym, horizon,
+      year: r.sell.date.slice(0, 4),
+      // 거래정지·상장폐지로 시세가 멈춘 종목: '현재까지'가 사실은 그 날짜까지다
+      frozenSince: P.frozenSince(sym),
+    };
   });
   const scored = rows.filter(x => x.horizon.now != null);
   const avgNow = scored.length ? scored.reduce((s, x) => s + (x.horizon.now - 1), 0) / scored.length : null;
-  const good = scored.filter(x => x.horizon.now < 1).length;
-  return { rows, agg: { count: scored.length, good, bad: scored.length - good, avgMissed: avgNow } };
+  return { rows, agg: { count: scored.length, avgMissed: avgNow } };
 }
 
 // 물타기 감지 + 채점: 보유 중 평단보다 싸게 추가 매수 → 이후 성과 vs 지수
@@ -468,24 +517,65 @@ export function loanStatus(state) {
 }
 
 // ---- 기간(주/월/연) 수익률 ------------------------------------------------------
-// 각 기간 말(마지막 거래일 종가 기준) 평가액을 전기 말과 비교. 기중 순 투입(외부에서 넣은 돈)은
-// 수익에서 제외해 순수 수익률을 낸다. 원화 기준(달러 자산은 각 시점 환율로 환산 → 환율 변동 포함).
-function contributionEvents(state) {
-  const cash = { KRW: 0, USD: 0 };
+// 평가액 = 그 시점 보유 주식 + 그 시점 현금(직접 입력분, 첫 입력 전은 0).
+// 원화 기준(달러 자산은 각 시점 환율로 환산 → 환율 변동 포함).
+//
+// 기중에 들어오고 나간 돈(자금 흐름):
+//  - 매수 +원가, 매도 −대금. 매도 대금은 앱이 추적하지 않으므로 계좌 밖으로 나간 것으로 본다.
+//    그 돈이 실제로 계좌에 남아 있었다면, 현금을 입력하는 순간 다시 들어온 것으로 잡힌다.
+//    어느 쪽이든 손익으로는 잡히지 않는다 — 돈을 옮긴 것은 번 것이 아니므로.
+//  - 현금 입력값의 변동 ±차액 (첫 입력 = 그동안 안 세던 현금을 자산으로 인식한 것).
+function flowEvents(state) {
   const ev = [];
   for (const t of sortedTrades(state)) {
     const cur = P.currencyOf(t.symbol);
-    if (t.side === 'buy') {
-      const cost = t.price * t.qty + (t.fee || 0);
-      const fromCash = Math.min(cash[cur], cost);
-      cash[cur] -= fromCash;
-      const ext = cost - fromCash; // 순수 외부 투입(현금 재사용 제외)
-      if (ext > 1e-9) ev.push({ date: t.date, amtKRW: P.toKRW(ext, cur, t.date) || 0 });
-    } else {
-      cash[cur] += t.price * t.qty - (t.fee || 0);
-    }
+    const amt = t.side === 'buy'
+      ? t.price * t.qty + (t.fee || 0)
+      : -(t.price * t.qty - (t.fee || 0));
+    ev.push({ date: t.date, amtKRW: P.toKRW(amt, cur, t.date) || 0 });
   }
-  return ev;
+  let prev = { KRW: 0, USD: 0 };
+  for (const e of cashLog(state)) {
+    const dKRW = ((e.KRW || 0) - prev.KRW) + (P.toKRW((e.USD || 0) - prev.USD, 'USD', e.date) || 0);
+    if (Math.abs(dKRW) > 1e-9) ev.push({ date: e.date, amtKRW: dKRW });
+    prev = { KRW: e.KRW || 0, USD: e.USD || 0 };
+  }
+  return ev.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+}
+
+// 시간가중 수익률(TWR) 계산기.
+//
+// 돈이 들어오고 나간 날마다 구간을 끊어 각 구간의 수익률을 따로 재고 곱한다. 이러면 "언제
+// 얼마를 넣었나"가 수익률에서 완전히 빠진다 — 기말에 원금을 왕창 넣은 기간이라고 해서
+// 그 돈의 손익이 작았던 기초 잔액에 나뉘어 수익률이 폭발하지 않는다(기저효과 제거).
+// 순손익(번 돈) 자체는 따로 그대로 보여주므로, 둘을 같이 보면 된다.
+function twrCalculator(state) {
+  const flowByDate = new Map();
+  for (const ev of flowEvents(state)) flowByDate.set(ev.date, (flowByDate.get(ev.date) || 0) + ev.amtKRW);
+  const flowDates = [...flowByDate.keys()].sort();
+  const cache = new Map(); // 같은 날짜 평가액을 여러 번 계산하지 않도록
+  const valueOn = d => {
+    if (!cache.has(d)) cache.set(d, portfolio(state, d).totalKRW);
+    return cache.get(d);
+  };
+  const flowsIn = (from, to) =>
+    flowDates.reduce((s, d) => (d > from && d <= to) ? s + flowByDate.get(d) : s, 0);
+
+  // from(그 시점 평가액 fromVal)부터 to까지의 시간가중 수익률. 굴린 돈이 없던 기간은 null.
+  const ret = (from, fromVal, to) => {
+    let factor = 1, vPrev = fromVal, any = false;
+    for (const d of flowDates) {
+      if (d <= from) continue;
+      if (d > to) break;
+      const v = valueOn(d);
+      // 그날 들어온(나간) 돈은 아직 일한 적이 없으므로 그 구간 수익에서 뺀다
+      if (vPrev > 1) { factor *= (v - flowByDate.get(d)) / vPrev; any = true; }
+      vPrev = v;
+    }
+    if (vPrev > 1) { factor *= valueOn(to) / vPrev; any = true; }
+    return any ? factor - 1 : null;
+  };
+  return { valueOn, flowsIn, ret };
 }
 
 const pad2 = n => String(n).padStart(2, '0');
@@ -496,7 +586,7 @@ export function periodReturns(state, unit = 'month') {
   if (!trades.length) return [];
   const today = todayStr();
   const first = trades[0].date;
-  const events = contributionEvents(state);
+  const calc = twrCalculator(state);
 
   // 기간 말 날짜 목록(ends)과 라벨 함수
   const ends = [];
@@ -525,12 +615,15 @@ export function periodReturns(state, unit = 'month') {
   let prevVal = 0;
   const rows = [];
   for (const end of ends) {
-    const endVal = portfolio(state, end).totalKRW;
-    const contrib = events.reduce((s, ev) => (ev.date > prevEnd && ev.date <= end) ? s + ev.amtKRW : s, 0);
-    const change = endVal - prevVal;          // 평가액 증감(투입 포함)
-    const gain = change - contrib;            // 순손익(투입 제외)
-    const ret = prevVal > 1 ? gain / prevVal : (contrib > 1 ? gain / contrib : null);
-    rows.push({ label: labelOf(prevEnd, end), start: prevEnd, end, isCurrent: end === today, startVal: prevVal, endVal, contrib, change, gain, ret });
+    const endVal = calc.valueOn(end);
+    const contrib = calc.flowsIn(prevEnd, end);  // 기중 들어온(+)·나간(−) 돈
+    const change = endVal - prevVal;             // 평가액 증감(그 돈 포함)
+    const gain = change - contrib;               // 순손익(그 돈 제외 = 실제로 번 돈)
+    rows.push({
+      label: labelOf(prevEnd, end), start: prevEnd, end, isCurrent: end === today,
+      startVal: prevVal, endVal, contrib, change, gain,
+      ret: calc.ret(prevEnd, prevVal, end),
+    });
     prevEnd = end; prevVal = endVal;
   }
   return rows.reverse(); // 최신 먼저
@@ -541,14 +634,14 @@ export function letterPack(state, period) {
   const today = todayStr();
   let [start, end] = quarterRange(period);
   if (end > today) end = today;
-  const p0 = portfolio(state, addDaysStr(start, -1));
+  const prevEnd = addDaysStr(start, -1);
+  const p0 = portfolio(state, prevEnd);
   const p1 = portfolio(state, end);
   const trades = sortedTrades(state).filter(t => t.date >= start && t.date <= end);
-  const flows = trades.filter(t => t.side === 'buy')
-    .reduce((s, t) => s + (P.toKRW(t.price * t.qty + (t.fee || 0), P.currencyOf(t.symbol), t.date) || 0), 0);
-  // 단순 수익률 근사 (기초가치+기간투입 대비)
-  const base = p0.totalKRW + flows;
-  const ret = base > 0 ? (p1.totalKRW - p0.totalKRW - flows) / base : null;
+  // 기간 수익률과 같은 방식(시간가중)으로 분기 수익률을 낸다
+  const calc = twrCalculator(state);
+  const flows = calc.flowsIn(prevEnd, end);
+  const ret = calc.ret(prevEnd, p0.totalKRW, end);
   const bench = {
     kospi: P.growth('^KS11', start, end),
     sp500: P.growth('^GSPC', start, end),
@@ -577,6 +670,7 @@ export function aiPack(state) {
   const retStr = [pf.sleeves.KRW.has ? `원화 ${pct(pf.sleeves.KRW.ret)}` : null, pf.sleeves.USD.has ? `달러 ${pct(pf.sleeves.USD.ret)}` : null].filter(Boolean).join(', ');
   L.push(`- 투입 원금: ${depStr} (통화별 분리) / 현재 가치: ${fmtMoney(pf.totalKRW)} (현재 환율 환산 합계)`);
   L.push(`- 수익률: ${retStr}${pf.sleeves.KRW.has && pf.sleeves.USD.has ? ` / 합산 ${pct(pf.ret)}(환율 영향 제외)` : ''}`);
+  L.push(`- 현금: ${pf.cashTracked ? `${fmtMoney(pf.cash.KRW)} + ${fmtMoney(pf.cash.USD, 'USD')} (${pf.cashSince}부터 직접 입력, 위 현재 가치에 포함)` : '직접 입력한 적 없음 → 위 수치는 보유 주식만 합산한 것'}`);
   if (w) {
     const last = w.dates.length - 1;
     L.push(`- 평행우주(같은 매수를 했을 때의 현재 가치): 실제 ${fmtMoney(w.actual[last])} / 코스피만 샀다면 ${fmtMoney(w.kospi[last])} / S&P500만 샀다면 ${fmtMoney(w.sp500[last])} / 예금(연 ${w.rate}%)만 했다면 ${fmtMoney(w.bank[last])}`);
@@ -604,7 +698,7 @@ export function aiPack(state) {
   for (const r of realized) {
     L.push(`- ${r.sell.date} ${r.sell.name || r.sell.symbol} 매도: 수익률 ${pct(r.ret)}, 평균 보유 ${r.holdDays ? Math.round(r.holdDays) + '일' : '?'}`);
   }
-  if (ss.agg.count) L.push(`- 매도 채점(판 뒤 그 주식의 현재까지 변화 평균): ${pct(ss.agg.avgMissed)} → ${ss.agg.avgMissed > 0 ? '평균적으로 판 뒤에 더 올랐다(일찍 파는 경향)' : '평균적으로 판 뒤에 내렸다(매도 판단이 유효)'}`);
+  if (ss.agg.count) L.push(`- 매도 ${ss.agg.count}건, 판 뒤 그 주식의 현재까지 변화 평균: ${pct(ss.agg.avgMissed)} (해석은 하지 않음 — 판 돈을 어디에 썼는지는 아래 기록에서 판단할 것)`);
   if (ad.agg.count) L.push(`- 물타기 ${ad.agg.count}회, 지수 대비 평균 ${pct(ad.agg.avgDelta)}P`);
   L.push('');
   L.push('## 흔들렸던 순간들 (홀딩 일지)');

@@ -19,11 +19,12 @@ function vWorlds() {
       <div class="empty">아직 매수 기록이 없습니다</div>`;
   }
   const li = w.dates.length - 1;
+  const pf = E.portfolio(state);
   const rows = [
-    ['실제의 나', w.actual[li], C.actual, '기록한 그대로. 매도 대금은 현금으로 보관'],
-    ['코스피만 산 나', w.kospi[li], C.kospi, '같은 날 같은 금액으로 코스피 지수만 매수'],
-    ['S&P500만 산 나', w.sp500[li], C.sp500, '같은 날 같은 금액으로 S&P500만 매수'],
-    ['예금만 한 나', w.bank[li], C.bank, `같은 날 같은 금액을 연 ${w.rate}% 예금에 (설정에서 금리 변경)`],
+    ['실제의 나', w.actual[li], C.actual, `기록한 그대로 — 보유 주식${pf.cashTracked ? ' + 입력한 현금' : ' (현금 미입력)'}`],
+    ['코스피만 산 나', w.kospi[li], C.kospi, '원금을 넣은 날 같은 금액으로 코스피 지수만 매수'],
+    ['S&P500만 산 나', w.sp500[li], C.sp500, '원금을 넣은 날 같은 금액으로 S&P500만 매수'],
+    ['예금만 한 나', w.bank[li], C.bank, `원금을 넣은 날 같은 금액을 연 ${w.rate}% 예금에 (설정에서 금리 변경)`],
   ];
   const dep = w.deposits[li];
   const best = Math.max(...rows.map(r => r[1]));
@@ -55,13 +56,17 @@ function vWorlds() {
             <td class="num ${pctClass(v - rows[0][1])}">${label === '실제의 나' ? '—' : fmtMoney(v - rows[0][1])}</td>
           </tr>`).join('')}
       </table></div>
-      <p class="hint">가정: 모든 매수는 새 돈 · 배당 재투자 · 매도 대금은 무이자 현금 · 달러는 당일 환율 환산 · 예금은 연 ${w.rate}% 복리(세전). 세계 간 조건은 동일하므로 비교는 공정합니다.</p>
+      <p class="hint">투입 원금은 <b>밖에서 새로 끌어온 돈</b>만 셉니다 — 판 돈으로 다시 산 것은 새 투입이 아니므로, 매매를 많이 했다고 원금이 불어나지 않습니다.
+      네 세계 모두 같은 날 같은 금액을 굴리므로 비교는 공정합니다. 가정: 배당 재투자 · 달러는 당일 환율 환산 · 예금은 연 ${w.rate}% 복리(세전).</p>
     </div>
     <p class="small muted" style="margin:0 2px;">매도·물타기 하나하나의 채점은 <a href="#/actions">개입 점수</a>에서.</p>`;
 }
 registerView('worlds', vWorlds);
 
 // ---------- 개입 점수 ----------
+// 조회 조건(전체/연도별/종목별). 화면을 다시 그려도 유지된다.
+let actionsFilter = { year: null, symbol: null };
+
 function vActions() {
   const ss = E.sellScores(state);
   const ad = E.avgDownBuys(state);
@@ -69,19 +74,65 @@ function vActions() {
   const g2p = g => g == null ? '–' : fmtPct(g - 1);
   const g2c = g => g == null ? 'flat' : pctClass(g - 1);
 
-  const sellRows = ss.rows.map(({ r, sym, name, horizon }) => `
+  // 조회 조건 적용
+  const { year, symbol } = actionsFilter;
+  const keep = (date, sym) => (!year || date.slice(0, 4) === year) && (!symbol || sym === symbol);
+  const sellRows = ss.rows.filter(x => keep(x.r.sell.date, x.sym));
+  const adRows = ad.rows.filter(x => keep(x.t.date, x.t.symbol));
+
+  // 조회 조건 UI — 연도·종목 목록은 실제 기록에서 뽑는다
+  const years = [...new Set([
+    ...ss.rows.map(x => x.r.sell.date.slice(0, 4)),
+    ...ad.rows.map(x => x.t.date.slice(0, 4)),
+  ])].sort().reverse();
+  const symMap = new Map();
+  for (const x of ss.rows) symMap.set(x.sym, x.name);
+  for (const x of ad.rows) if (!symMap.has(x.t.symbol)) symMap.set(x.t.symbol, x.t.name || x.t.symbol);
+  const symOpts = [...symMap.entries()].sort((a, b) => a[1].localeCompare(b[1], 'ko'))
+    .map(([s, n]) => `<option value="${esc(s)}" ${symbol === s ? 'selected' : ''}>${esc(n)}</option>`).join('');
+
+  const filterBar = `
+    <div class="card" style="padding:10px 12px;">
+      <div class="btn-row" style="margin:0; flex-wrap:wrap; align-items:center;">
+        <button class="btn small ${!year ? 'primary' : ''}" data-year="">전체 기간</button>
+        ${years.map(y => `<button class="btn small ${year === y ? 'primary' : ''}" data-year="${y}">${y}년</button>`).join('')}
+        <select data-symsel style="margin-left:auto; border:1px solid var(--line); border-radius:8px; padding:6px 8px; background:var(--bg); color:inherit; max-width:190px;">
+          <option value="">종목 전체</option>
+          ${symOpts}
+        </select>
+      </div>
+      ${symbol ? `<div class="small" style="margin-top:8px;">
+        <span class="tag">${esc(symMap.get(symbol) || symbol)}</span> 관련 개입만 보는 중
+        <button class="btn small" data-clearsym style="margin-left:6px;">✕ 종목 조건 해제</button>
+      </div>` : ''}
+    </div>`;
+
+  const scoped = [year ? `${year}년` : null, symbol ? (symMap.get(symbol) || symbol) : null].filter(Boolean).join(' · ');
+  const scopeNote = scoped ? `<span class="muted small" style="font-weight:400;"> — ${esc(scoped)}</span>` : '';
+
+  // 조회된 것만으로 다시 집계
+  const scoredSell = sellRows.filter(x => x.horizon.now != null);
+  const avgMissed = scoredSell.length
+    ? scoredSell.reduce((s, x) => s + (x.horizon.now - 1), 0) / scoredSell.length : null;
+  const scoredAd = adRows.filter(x => x.delta != null);
+  const avgDelta = scoredAd.length ? scoredAd.reduce((s, x) => s + x.delta, 0) / scoredAd.length : null;
+
+  const sellBody = sellRows.map(({ r, sym, name, horizon, frozenSince }) => `
     <tr>
-      <td><b>${esc(name)}</b><br><span class="muted small">${r.sell.date} · ${fmtQty(r.sell.qty)}주${r.sell.sample ? ' · 예시' : ''}</span></td>
-      <td class="num ${g2c(horizon.m3)}">${g2p(horizon.m3)}</td>
-      <td class="num ${g2c(horizon.m6)}">${g2p(horizon.m6)}</td>
-      <td class="num ${g2c(horizon.m12)}">${g2p(horizon.m12)}</td>
-      <td class="num ${g2c(horizon.now)}"><b>${g2p(horizon.now)}</b></td>
-      <td class="num">${horizon.now == null ? '–' : horizon.now < 1 ? '<span class="tag">잘 판 매도</span>' : '<span class="tag warn">이른 매도</span>'}</td>
+      <td>
+        <b class="symlink" data-symlink="${esc(sym)}">${esc(name)}</b>
+        <br><span class="muted small">${r.sell.date} · ${fmtQty(r.sell.qty)}주</span>
+      </td>
+      ${E.SELL_HORIZONS.map(m => `<td class="num ${g2c(horizon['m' + m])}">${g2p(horizon['m' + m])}</td>`).join('')}
+      <td class="num ${g2c(horizon.now)}"><b>${g2p(horizon.now)}</b>${frozenSince ? `<br><span class="muted small" title="거래정지·상장폐지로 시세가 멈춰 있습니다">${frozenSince} 정지</span>` : ''}</td>
     </tr>`).join('');
 
-  const adRows = ad.rows.map(x => `
+  const adBody = adRows.map(x => `
     <tr>
-      <td><b>${esc(x.t.name || x.t.symbol)}</b><br><span class="muted small">${x.t.date} · ${fmtQty(x.t.qty)}주 @ ${fmtMoney(x.t.price, P.currencyOf(x.t.symbol))}${x.t.sample ? ' · 예시' : ''}</span></td>
+      <td>
+        <b class="symlink" data-symlink="${esc(x.t.symbol)}">${esc(x.t.name || x.t.symbol)}</b>
+        <br><span class="muted small">${x.t.date} · ${fmtQty(x.t.qty)}주 @ ${fmtMoney(x.t.price, P.currencyOf(x.t.symbol))}</span>
+      </td>
       <td class="num ${g2c(x.growth)}">${g2p(x.growth)}</td>
       <td class="num ${g2c(x.benchGrowth)}">${g2p(x.benchGrowth)}</td>
       <td class="num ${x.delta == null ? 'flat' : pctClass(x.delta)}"><b>${x.delta == null ? '–' : fmtPct(x.delta) + 'P'}</b></td>
@@ -89,35 +140,48 @@ function vActions() {
 
   return `
     <div class="view-title">개입 점수</div>
-    <p class="view-desc">내 손이 계좌에 닿을 때마다, 그 행동이 돈을 지켰는지 깎았는지 채점합니다.</p>
+    <p class="view-desc">내 손이 계좌에 닿은 순간들. 판 뒤 그 주식이 어떻게 됐는지, 물타기한 돈이 지수보다 나았는지를 보여줍니다. 잘잘못은 판정하지 않습니다 — 판 돈을 어디에 썼는지는 당신만 압니다.</p>
+    ${filterBar}
     <div class="card">
-      <h3>매도 채점 — 판 뒤 그 주식은 어떻게 됐나</h3>
-      ${ss.rows.length ? `
+      <h3>매도 채점 — 판 뒤 그 주식은 어떻게 됐나${scopeNote}</h3>
+      ${sellRows.length ? `
       <div class="tbl-wrap"><table class="tbl">
-        <tr><th>매도</th><th class="num">+3개월</th><th class="num">+6개월</th><th class="num">+12개월</th><th class="num">현재까지</th><th class="num">판정</th></tr>
-        ${sellRows}
+        <tr><th>매도</th>${E.SELL_HORIZONS.map(m => `<th class="num">+${m}개월</th>`).join('')}<th class="num">현재까지</th></tr>
+        ${sellBody}
       </table></div>
-      ${ss.agg.count ? `<p class="small" style="margin-bottom:0;">
-        매도 ${ss.agg.count}건 중 <b>${ss.agg.good}건</b>은 판 뒤 주가가 내렸고(잘 판 매도), <b>${ss.agg.bad}건</b>은 더 올랐습니다.
-        판 종목들은 매도 후 현재까지 평균 <b class="${pctClass(ss.agg.avgMissed)}">${fmtPct(ss.agg.avgMissed)}</b> 움직였습니다.
-        ${ss.agg.avgMissed > 0.03 ? '→ 평균적으로 <b>일찍 파는 경향</b>이 데이터에 나타납니다.' : ss.agg.avgMissed < -0.03 ? '→ 매도 판단이 평균적으로 <b>가치를 지키고</b> 있습니다.' : ''}
-      </p>` : ''}` : '<div class="empty">아직 매도 기록이 없습니다</div>'}
-      <p class="hint">수치는 배당·분할 반영 기준. 주가가 판 가격보다 "내렸다"면 매도가 손실을 피한 것입니다.</p>
+      ${scoredSell.length ? `<p class="small" style="margin-bottom:0;">
+        매도 ${scoredSell.length}건. 판 종목들은 매도 후 현재까지 평균 <b class="${pctClass(avgMissed)}">${fmtPct(avgMissed)}</b> 움직였습니다.
+      </p>` : ''}` : '<div class="empty">조회 조건에 맞는 매도 기록이 없습니다</div>'}
+      <p class="hint">배당·분할·병합 반영 기준(매도일 100 대비). 종목명을 누르면 그 종목의 개입만 모아 봅니다.
+      "정지"는 거래정지·상장폐지로 시세가 그 날짜에 멈췄다는 뜻이라, 그 종목의 "현재까지"는 사실 그날까지입니다.</p>
     </div>
     <div class="card">
-      <h3>물타기 채점 — 평단 아래 추가 매수, 그 돈의 성적</h3>
-      ${ad.rows.length ? `
+      <h3>물타기 채점 — 평단 아래 추가 매수, 그 돈의 성적${scopeNote}</h3>
+      ${adRows.length ? `
       <div class="tbl-wrap"><table class="tbl">
         <tr><th>추가 매수</th><th class="num">이후 종목</th><th class="num">같은 기간 지수</th><th class="num">지수 대비</th></tr>
-        ${adRows}
+        ${adBody}
       </table></div>
-      ${ad.agg.count && ad.agg.avgDelta != null ? `<p class="small" style="margin-bottom:0;">
-        물타기 ${ad.agg.count}회. 그 돈을 그냥 지수에 넣었을 때와 비교해 평균 <b class="${pctClass(ad.agg.avgDelta)}">${fmtPct(ad.agg.avgDelta)}P</b>.
-        ${ad.agg.avgDelta < -0.03 ? '→ 물타기가 평균적으로 <b>지수보다 못한 선택</b>이었습니다.' : ad.agg.avgDelta > 0.03 ? '→ 물타기가 지수보다 나은 결과를 냈습니다.' : ''}
-      </p>` : ''}` : '<div class="empty">물타기로 분류된 매수가 없습니다</div>'}
+      ${avgDelta != null ? `<p class="small" style="margin-bottom:0;">
+        물타기 ${adRows.length}회. 그 돈을 그냥 지수에 넣었을 때와 비교해 평균 <b class="${pctClass(avgDelta)}">${fmtPct(avgDelta)}P</b>.
+      </p>` : ''}` : '<div class="empty">조회 조건에 맞는 물타기 매수가 없습니다</div>'}
       <p class="hint">물타기 = 이미 보유 중인 종목을 평균 단가보다 싸게 추가 매수한 것. 한국 종목은 코스피, 미국 종목은 S&P500과 비교합니다.</p>
     </div>`;
 }
+vActions.bind_ = (root) => {
+  root.querySelectorAll('[data-year]').forEach(b => b.addEventListener('click', () => {
+    actionsFilter.year = b.dataset.year || null; render();
+  }));
+  root.querySelector('[data-symsel]')?.addEventListener('change', e => {
+    actionsFilter.symbol = e.target.value || null; render();
+  });
+  root.querySelector('[data-clearsym]')?.addEventListener('click', () => {
+    actionsFilter.symbol = null; render();
+  });
+  root.querySelectorAll('[data-symlink]').forEach(b => b.addEventListener('click', () => {
+    actionsFilter.symbol = b.dataset.symlink; render();
+  }));
+};
 registerView('actions', vActions);
 
 // ---------- 관심 종목 ----------
@@ -565,11 +629,13 @@ function vReturns() {
   const best = done.length ? done.reduce((a, b) => b.ret > a.ret ? b : a) : null;
   const worst = done.length ? done.reduce((a, b) => b.ret < a.ret ? b : a) : null;
 
+  const flowNote = c => Math.abs(c) < 1 ? ''
+    : `<br><span class="muted small">${c > 0 ? '투입' : '회수'} ${fmtMoney(Math.abs(c))}</span>`;
   const rowHtml = r => `
     <tr>
       <td>${esc(r.label)}${r.isCurrent ? ' <span class="muted small">진행 중</span>' : ''}</td>
       <td class="num">${fmtMoney(r.endVal)}</td>
-      <td class="num ${pctClass(r.change)}">${fmtMoney(r.change)}${r.contrib > 1 ? `<br><span class="muted small">투입 ${fmtMoney(r.contrib)}</span>` : ''}</td>
+      <td class="num ${pctClass(r.change)}">${fmtMoney(r.change)}${flowNote(r.contrib)}</td>
       <td class="num ${pctClass(r.gain)}">${fmtMoney(r.gain)}</td>
       <td class="num ${pctClass(r.ret)}"><b>${fmtPct(r.ret)}</b></td>
     </tr>`;
@@ -601,7 +667,11 @@ function vReturns() {
         <tr><th>기간</th><th class="num">기말 평가액</th><th class="num">전기比 증감</th><th class="num">순손익</th><th class="num">수익률</th></tr>
         ${body}
       </table></div>
-      <p class="hint">전기比 증감은 투입한 돈을 포함한 평가액 변화이고, 순손익·수익률은 기중 투입을 제외한 실제 손익입니다. 수익률 = 순손익 ÷ 전기 말 평가액(첫 기간은 투입액 기준).</p>
+      <p class="hint">전기比 증감은 들어오고 나간 돈까지 포함한 평가액 변화이고, <b>순손익</b>은 그 돈을 뺀 실제로 번 돈입니다.<br>
+      <b>수익률은 시간가중(TWR)</b> — 돈이 들어오고 나간 날마다 구간을 끊어 각 구간 수익률을 곱합니다.
+      그래서 "얼마를 언제 넣었나"가 수익률에 섞이지 않습니다. 기존 잔액이 적었는데 기말에 원금을 크게 넣어
+      순손익이 커져도, 그 돈이 실제로 굴러간 기간의 성적만 반영되므로 수익률이 부풀지 않습니다.
+      번 <b>금액</b>이 궁금하면 순손익을, 운용 <b>성적</b>이 궁금하면 수익률을 보세요.</p>
     </div>`;
 }
 vReturns.bind_ = (root) => {

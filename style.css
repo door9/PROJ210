@@ -65,6 +65,12 @@ main#view {
   outline: none;
 }
 .view-title { font-size: 20px; font-weight: 800; margin: 6px 2px 4px; letter-spacing: -0.02em; }
+/* 제목 줄 양 끝 배치: 왼쪽 끝에 이름, 오른쪽 끝에 버튼 */
+.view-title.split { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* 표 안에서 눌러서 그 종목만 걸러 보는 종목명 */
+.symlink { cursor: pointer; border-bottom: 1px dashed var(--line); }
+.symlink:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .view-desc { color: var(--sub); font-size: 13.5px; margin: 0 2px 14px; }
 
 .card {

@@ -364,8 +364,8 @@ function openPinModal(mode) {
 function vSettings() {
   const syms = P.symbols().filter(s => !s.startsWith('^') && s !== 'KRW=X');
   const u = P.updatedAt();
-  const pf = E.portfolio(state);
-  const mc = state.settings.manualCash || {};
+  const cashLog = E.cashLog(state);
+  const latestCash = cashLog[cashLog.length - 1] || null;
   return `
     <div class="view-title">설정</div>
     <div class="card">
@@ -435,27 +435,43 @@ function vSettings() {
     </div>
     <div class="card">
       <h3>현금 잔액</h3>
-      <p class="small muted" style="margin:4px 0 0;">계좌의 실제 현금 잔액을 직접 입력하세요. 비워두면 자동(매도 대금 중 재투자 안 된 금액)으로 계산합니다.
-      이 값은 <b>홈의 총자산·현금 표시</b>에만 쓰이고, 수익률·평행우주 등 투자 성과 지표에는 영향을 주지 않습니다.</p>
+      <p class="small muted" style="margin:4px 0 0;">계좌의 실제 현금 잔액을 직접 입력하세요. 앱은 매도 대금을 현금으로 추정하지 않습니다 —
+      입출금·환전·이자를 알 수 없어 추정치는 어차피 틀립니다.<br>
+      <b>처음 입력한 날짜부터</b> 현금이 평가액(총자산·수익률)에 포함되고, 그 전 구간은 보유 주식만 합산합니다.
+      잔액이 바뀌면 새로 입력하세요 — 그 날짜부터 새 값이 적용되고, 늘거나 준 만큼은 입출금으로 보아 수익에서 제외합니다.</p>
+      ${cashLog.length ? '' : '<div class="notice" style="margin-top:8px;">아직 입력한 적이 없어 현금을 0으로 계산 중입니다.</div>'}
       <form id="cash-form" class="form-grid" style="margin-top:10px;">
+        <label class="fld">기준일
+          <input type="date" name="date" max="${todayStr()}" value="${todayStr()}" required>
+        </label>
         <label class="fld">원화 현금 (원)
-          <input name="cashKRW" type="number" step="any" inputmode="numeric" value="${mc.KRW ?? ''}" placeholder="자동: ${Math.round(pf.cash.KRW).toLocaleString('ko-KR')}">
+          <input name="cashKRW" type="number" step="any" min="0" inputmode="numeric" value="${latestCash?.KRW ?? ''}" placeholder="0">
         </label>
         <label class="fld">달러 현금 ($)
-          <input name="cashUSD" type="number" step="any" inputmode="decimal" value="${mc.USD ?? ''}" placeholder="자동: ${(pf.cashUSD || 0).toFixed(2)}">
+          <input name="cashUSD" type="number" step="any" min="0" inputmode="decimal" value="${latestCash?.USD ?? ''}" placeholder="0">
         </label>
         <div class="full btn-row" style="margin:0;">
           <button class="btn primary" type="submit">저장</button>
-          <button type="button" class="btn" data-x="cashauto">자동으로 되돌리기</button>
         </div>
       </form>
+      ${cashLog.length ? `
+      <div class="tbl-wrap" style="margin-top:10px;"><table class="tbl">
+        <tr><th>기준일</th><th class="num">원화</th><th class="num">달러</th><th></th></tr>
+        ${[...cashLog].reverse().map(e => `
+          <tr>
+            <td>${e.date}${e.date === cashLog[0].date ? ' <span class="muted small">첫 입력</span>' : ''}</td>
+            <td class="num">${fmtMoney(e.KRW || 0)}</td>
+            <td class="num">${fmtMoney(e.USD || 0, 'USD')}</td>
+            <td class="num"><button class="btn small danger" data-delcash="${e.date}">삭제</button></td>
+          </tr>`).join('')}
+      </table></div>` : ''}
     </div>
     <div class="card">
       <h3>회계 가정</h3>
       <p class="small muted" style="margin:4px 0 0;">
-        · 모든 매수는 "새 돈"으로 간주 (매도 대금 재사용을 추적하지 않음)<br>
-        · 매도 대금은 무이자 현금으로 포트폴리오에 잔류<br>
-        · 평가액은 수정종가 기준 = 배당 재투자 + 액면분할 자동 반영<br>
+        · 평가액 = 그 시점 보유 주식 + 그 시점 현금(직접 입력분). 매도 대금을 현금으로 추정하지 않음<br>
+        · 투입 원금은 밖에서 새로 끌어온 돈만 — 매도 대금으로 다시 산 것은 새 투입이 아님<br>
+        · 평가액은 수정종가 기준 = 배당 재투자 + 액면분할·병합 자동 반영<br>
         · 달러 자산은 해당일 원/달러 환율로 환산<br>
         · 모든 평행우주에 같은 가정을 적용하므로 비교는 공정
       </p>
@@ -523,23 +539,34 @@ vSettings.bind_ = (root) => {
     state.settings.updatedAt = Date.now();
     saveNow(); render(); toast(`예금 가정 금리를 연 ${v}%로 저장했습니다`);
   });
-  const saveCash = (krw, usd) => {
-    state.settings.manualCash = { KRW: krw, USD: usd };
-    state.settings.updatedAt = Date.now();
-    saveNow(); render();
-  };
   root.querySelector('#cash-form').addEventListener('submit', e => {
     e.preventDefault();
     const f = e.target;
-    const parse = v => { v = v.trim(); if (v === '') return null; const n = parseFloat(v); return (isNaN(n) || n < 0) ? undefined : n; };
+    const parse = v => { v = v.trim(); if (v === '') return 0; const n = parseFloat(v); return (isNaN(n) || n < 0) ? null : n; };
     const krw = parse(f.cashKRW.value), usd = parse(f.cashUSD.value);
-    if (krw === undefined || usd === undefined) { toast('현금은 0 이상의 숫자로 입력하세요'); return; }
-    saveCash(krw, usd);
-    toast('현금 잔액을 저장했습니다');
+    if (krw === null || usd === null) { toast('현금은 0 이상의 숫자로 입력하세요'); return; }
+    const date = f.date.value;
+    if (!date) { toast('기준일을 입력하세요'); return; }
+    const log = (state.settings.cashLog || []).filter(x => x.date !== date); // 같은 날짜는 덮어쓰기
+    log.push({ date, KRW: krw, USD: usd });
+    log.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    state.settings.cashLog = log;
+    state.settings.updatedAt = Date.now();
+    saveNow(); render();
+    toast(`${date} 기준 현금 잔액을 저장했습니다`);
   });
-  root.querySelector('[data-x=cashauto]')?.addEventListener('click', () => {
-    saveCash(null, null); toast('현금을 자동 계산으로 되돌렸습니다');
-  });
+  root.querySelectorAll('[data-delcash]').forEach(b => b.addEventListener('click', async () => {
+    const date = b.dataset.delcash;
+    const ok = await confirmModal({
+      title: '현금 입력 삭제',
+      body: `${date} 기준 현금 입력을 삭제합니다. 그 날짜부터는 이전 입력값(없으면 현금 0)으로 계산됩니다.`,
+      okLabel: '삭제', danger: true,
+    });
+    if (!ok) return;
+    state.settings.cashLog = (state.settings.cashLog || []).filter(x => x.date !== date);
+    state.settings.updatedAt = Date.now();
+    saveNow(); render();
+  }));
   root.querySelector('#name-form').addEventListener('submit', e => {
     e.preventDefault();
     state.settings.fundName = e.target.fundName.value.trim() || 'PROJ210';

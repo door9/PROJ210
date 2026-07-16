@@ -3,7 +3,7 @@ import { state, saveNow, toast, openModal, closeModal, confirmModal, registerVie
 import * as Store from './store.js';
 import * as P from './prices.js';
 import * as E from './engine.js';
-import { uid, todayStr, esc, fmtMoney, moneyKorean, fmtPct, fmtQty, pctClass, quarterOf } from './util.js';
+import { uid, todayStr, esc, fmtMoney, moneyKorean, fmtPct, fmtQty, fmtFx, pctClass, quarterOf } from './util.js';
 import * as Dbx from './dropbox.js';
 import * as Lock from './lock.js';
 
@@ -55,6 +55,7 @@ function vHome() {
   const ln = E.loanStatus(state);
 
   const alerts = [];
+  if (!pf.cashTracked) alerts.push(`<div class="notice">현금 잔액이 아직 입력되지 않아 <b>보유 주식만</b> 합산하고 있습니다 — <a href="#/settings">설정</a>에서 원화·달러 잔액을 넣으면 총자산·수익률에 반영됩니다.</div>`);
   if (!Lock.hasPin()) alerts.push(`<div class="warnbox">앱 잠금(PIN)이 설정되지 않았습니다 — <a href="#/settings">설정</a>에서 PIN을 설정하세요.</div>`);
   if (!Dbx.connected()) alerts.push(`<div class="notice">아직 이 기기에만 저장 중 — <a href="#/settings">설정</a>에서 Dropbox를 연결하면 PC·폰 간 동기화됩니다.</div>`);
   const q = quarterOf(todayStr());
@@ -70,19 +71,17 @@ function vHome() {
       <td class="num">${fmtMoney(r.value, r.cur)}<br><span class="muted small">${(r.weight * 100).toFixed(1)}%</span></td>
       <td class="num ${pctClass(r.ret)}">${fmtPct(r.ret)}</td>
     </tr>`).join('');
-  // 현금 잔액 — 통화별로 포트폴리오에 표시 (직접 설정했으면 그 값, 아니면 자동=미재투자 매도대금)
-  const manualSet = pf.manualCash.KRW != null || pf.manualCash.USD != null;
-  const cashNote = manualSet ? '직접 설정' : '매도 대금 · 미투자';
+  // 현금 잔액 — 사용자가 직접 입력한 값만 (앱은 매도 대금을 현금으로 추정하지 않는다)
   const cashRow = (label, amt, curc) => `
     <tr>
-      <td><b>${label}</b><br><span class="muted small">${cashNote}</span></td>
+      <td><b>${label}</b><br><span class="muted small">${pf.cashSince} 입력</span></td>
       <td class="num">–</td>
       <td class="num">${fmtMoney(amt, curc)}</td>
       <td class="num">–</td>
     </tr>`;
-  const cashRows = [
-    pf.displayCash.KRW > 1 ? cashRow('원화 현금', pf.displayCash.KRW, 'KRW') : '',
-    pf.displayCash.USD > 0.01 ? cashRow('달러 현금', pf.displayCash.USD, 'USD') : '',
+  const cashRows = !pf.cashTracked ? '' : [
+    pf.cash.KRW > 1 ? cashRow('원화 현금', pf.cash.KRW, 'KRW') : '',
+    pf.cash.USD > 0.01 ? cashRow('달러 현금', pf.cash.USD, 'USD') : '',
   ].join('');
   const hasHoldingsOrCash = pf.rows.length || cashRows;
 
@@ -96,19 +95,22 @@ function vHome() {
   const bothCur = sK.has && sU.has;
 
   return `
-    <div class="view-title">${esc(state.settings.fundName || 'PROJ210')} <button class="btn small" data-act="refresh" title="시세 지금 갱신" style="vertical-align:2px;">↻ 시세</button></div>
+    <div class="view-title split">
+      <span>${esc(state.settings.fundName || 'PROJ210')}</span>
+      <button class="btn small" data-act="refresh" title="시세 지금 갱신">↻ 시세</button>
+    </div>
     <p class="view-desc">기준일 ${pf.date} · 배당 재투자 가정 · 달러는 당일 환율 환산</p>
     ${quoteCard()}
     ${alerts.join('')}
     <div class="card hero">
       <div class="row"><span>투입 원금 ${depStr}</span></div>
-      <div class="big">${fmtMoney(pf.accountValueKRW)}</div>
-      <div class="row"><span class="muted small">총자산 = 보유 평가액 + 현금</span></div>
+      <div class="big">${fmtMoney(pf.totalKRW)}</div>
+      <div class="row"><span class="muted small">${pf.cashTracked ? '총자산 = 보유 평가액 + 현금' : '보유 평가액 (현금 미포함)'}</span></div>
       <div class="row" style="margin-top:6px;">
         <span>수익률 ${retParts.join(' · ') || '–'}</span>
         ${bothCur && pf.ret != null ? `<span class="muted">· 합산 <b class="${pctClass(pf.ret)}">${fmtPct(pf.ret)}</b> (환율 영향 제외)</span>` : ''}
       </div>
-      ${bothCur ? `<div class="row muted small">보유 평가액: 원화 ${fmtMoney(pf.holdKRW)} + 달러 ${fmtMoney(pf.holdUSD, 'USD')}${pf.fx ? ` · 환율 ₩${Math.round(pf.fx).toLocaleString()}` : ''}</div>` : ''}
+      ${bothCur ? `<div class="row muted small">보유 평가액: 원화 ${fmtMoney(pf.holdKRW)} + 달러 ${fmtMoney(pf.holdUSD, 'USD')}${pf.fx ? ` · 환율 ₩${fmtFx(pf.fx)}` : ''}</div>` : ''}
     </div>
     ${ln ? `<a href="#/cost" class="card loan-card" style="display:block; text-decoration:none; color:inherit;">
       <div class="trade-head">

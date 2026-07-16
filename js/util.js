@@ -60,6 +60,12 @@ export function fmtQty(v) {
   return v.toLocaleString('ko-KR', { maximumFractionDigits: 6 });
 }
 
+// 원/달러 환율: 소수점 첫째 자리까지 (1,483.1). 정수로 반올림하면 하루 등락이 통째로 사라진다.
+export function fmtFx(v) {
+  if (v == null || isNaN(v)) return '–';
+  return v.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 // +12.3% 형태 (한국 관례: 상승 빨강, 하락 파랑 — 클래스는 호출부에서)
 export function fmtPct(r, digits = 1) {
   if (r == null || isNaN(r)) return '–';

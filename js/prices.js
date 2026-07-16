@@ -195,6 +195,12 @@ export function info(sym) {
   return d ? { name: d.name, currency: d.currency } : null;
 }
 
+// 시세가 멈춘 종목(거래정지·상장폐지)이면 멈춘 날짜, 정상이면 null.
+// 멈춘 종가를 '현재가'로 쓴 수익률은 사실이 아니므로 화면에서 표시해 경고한다.
+export function frozenSince(sym) {
+  return map.get(sym)?.frozenSince || null;
+}
+
 // dates에서 target 이하의 마지막 인덱스 (이진 탐색)
 function idxOn(d, target) {
   const a = d.dates;

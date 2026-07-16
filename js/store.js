@@ -10,7 +10,8 @@ export function defaultState() {
   return {
     version: 1,
     // settings는 통째로 동기화됨 — 바꿀 때 반드시 updatedAt 갱신
-    settings: { fundName: 'PROJ210', inception: null, ghRepo: '', ghPat: '', updatedAt: 0 },
+    // cashLog: 직접 입력한 현금 잔액 이력 [{date, KRW, USD}] — 비어 있으면 현금 0(주식만 합산)
+    settings: { fundName: 'PROJ210', inception: null, ghRepo: '', ghPat: '', cashLog: [], updatedAt: 0 },
     trades: [],      // 매매 기록
     diary: [],       // 홀딩 일지
     principles: [],  // 투자 헌법
@@ -64,6 +65,18 @@ function migrate(state) {
     }
     if (t.sample) delete t.sample; // 예시 표시도 정리
   }
+  // 현금 잔액: 단일 값(manualCash) → 날짜별 입력 이력(cashLog)으로 이전.
+  // 언제 넣은 값인지 알 수 없으므로 오늘 입력한 것으로 본다(그 전 구간은 현금 0 = 주식만 합산).
+  if (state.settings.manualCash) {
+    const mc = state.settings.manualCash;
+    if (!(state.settings.cashLog || []).length && (mc.KRW != null || mc.USD != null)) {
+      state.settings.cashLog = [{ date: todayStr(), KRW: mc.KRW || 0, USD: mc.USD || 0 }];
+    }
+    delete state.settings.manualCash;
+    state.settings.updatedAt = Date.now();
+  }
+  if (!state.settings.cashLog) state.settings.cashLog = [];
+
   // 기기별로 저장하던 PIN을 동기화되는 settings로 이전
   try {
     const legacyPin = localStorage.getItem('onefund.pinHash');
