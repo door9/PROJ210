@@ -70,17 +70,19 @@ function vHome() {
       <td class="num">${fmtMoney(r.value, r.cur)}<br><span class="muted small">${(r.weight * 100).toFixed(1)}%</span></td>
       <td class="num ${pctClass(r.ret)}">${fmtPct(r.ret)}</td>
     </tr>`).join('');
-  // 매도 후 현금(재투자 안 한 잔여) — 통화별로 포트폴리오에 표시
+  // 현금 잔액 — 통화별로 포트폴리오에 표시 (직접 설정했으면 그 값, 아니면 자동=미재투자 매도대금)
+  const manualSet = pf.manualCash.KRW != null || pf.manualCash.USD != null;
+  const cashNote = manualSet ? '직접 설정' : '매도 대금 · 미투자';
   const cashRow = (label, amt, curc) => `
     <tr>
-      <td><b>${label}</b><br><span class="muted small">매도 대금 · 미투자</span></td>
+      <td><b>${label}</b><br><span class="muted small">${cashNote}</span></td>
       <td class="num">–</td>
       <td class="num">${fmtMoney(amt, curc)}</td>
       <td class="num">–</td>
     </tr>`;
   const cashRows = [
-    pf.cash.KRW > 1 ? cashRow('원화 현금', pf.cash.KRW, 'KRW') : '',
-    pf.cashUSD > 0.01 ? cashRow('달러 현금', pf.cashUSD, 'USD') : '',
+    pf.displayCash.KRW > 1 ? cashRow('원화 현금', pf.displayCash.KRW, 'KRW') : '',
+    pf.displayCash.USD > 0.01 ? cashRow('달러 현금', pf.displayCash.USD, 'USD') : '',
   ].join('');
   const hasHoldingsOrCash = pf.rows.length || cashRows;
 
@@ -100,12 +102,13 @@ function vHome() {
     ${alerts.join('')}
     <div class="card hero">
       <div class="row"><span>투입 원금 ${depStr}</span></div>
-      <div class="big">${fmtMoney(pf.totalKRW)}</div>
-      <div class="row">
-        <span>${retParts.join(' · ')}</span>
+      <div class="big">${fmtMoney(pf.accountValueKRW)}</div>
+      <div class="row"><span class="muted small">총자산 = 보유 평가액 + 현금</span></div>
+      <div class="row" style="margin-top:6px;">
+        <span>수익률 ${retParts.join(' · ') || '–'}</span>
         ${bothCur && pf.ret != null ? `<span class="muted">· 합산 <b class="${pctClass(pf.ret)}">${fmtPct(pf.ret)}</b> (환율 영향 제외)</span>` : ''}
       </div>
-      ${bothCur ? `<div class="row muted small">현재 평가액: 원화 ${fmtMoney(pf.holdKRW + pf.cash.KRW)} + 달러 ${fmtMoney(pf.holdUSD + pf.cashUSD, 'USD')}${pf.fx ? ` · 환율 ₩${Math.round(pf.fx).toLocaleString()}` : ''}</div>` : ''}
+      ${bothCur ? `<div class="row muted small">보유 평가액: 원화 ${fmtMoney(pf.holdKRW)} + 달러 ${fmtMoney(pf.holdUSD, 'USD')}${pf.fx ? ` · 환율 ₩${Math.round(pf.fx).toLocaleString()}` : ''}</div>` : ''}
     </div>
     ${ln ? `<a href="#/cost" class="card loan-card" style="display:block; text-decoration:none; color:inherit;">
       <div class="trade-head">

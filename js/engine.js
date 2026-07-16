@@ -130,10 +130,23 @@ export function portfolio(state, date = null) {
   // (환전 시점 환율을 추적하지 않으므로 실제 환차익은 계산 불가 → 원가·평가를 같은 현재 환율로 환산)
   const costKRWnow = netCap.KRW + (P.toKRW(netCap.USD, 'USD', d) || 0);
 
+  // 표시용 현금: settings.manualCash가 있으면 통화별로 그 값을 쓴다(없으면 자동=미재투자 매도대금).
+  // 이건 '현재 계좌 잔액' 표시·총자산용이며, 수익률·평행우주 등 성과 지표는 위의 자동 현금을 그대로 쓴다
+  // (인출한 돈도 실현 수익이므로 성과에서 빼면 안 됨).
+  const mc = state.settings?.manualCash || {};
+  const dispCash = {
+    KRW: mc.KRW != null ? mc.KRW : cash.KRW,
+    USD: mc.USD != null ? mc.USD : cash.USD,
+  };
+  const dispCashKRW = dispCash.KRW + (P.toKRW(dispCash.USD, 'USD', d) || 0);
+
   return {
     date: d, rows, cash, cashKRW, investedKRW, totalKRW, fx, sleeves,
     depositKRW: netCap.KRW, depositUSD: netCap.USD,
     holdKRW: hold.KRW || 0, holdUSD: hold.USD || 0, cashUSD: cash.USD,
+    displayCash: dispCash, displayCashKRW: dispCashKRW,
+    accountValueKRW: investedKRW + dispCashKRW,   // 총자산 = 보유 평가액 + 표시 현금
+    manualCash: { KRW: mc.KRW ?? null, USD: mc.USD ?? null },
     deposits: costKRWnow,           // 합산 원가(현재 환율) — 단일 KRW 지표 소비자용
     profit: totalKRW - costKRWnow,  // 합산 손익(환율 영향 제외)
     ret: costKRWnow > 0 ? (totalKRW - costKRWnow) / costKRWnow : null,

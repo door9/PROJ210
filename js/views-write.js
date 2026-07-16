@@ -364,6 +364,8 @@ function openPinModal(mode) {
 function vSettings() {
   const syms = P.symbols().filter(s => !s.startsWith('^') && s !== 'KRW=X');
   const u = P.updatedAt();
+  const pf = E.portfolio(state);
+  const mc = state.settings.manualCash || {};
   return `
     <div class="view-title">설정</div>
     <div class="card">
@@ -430,6 +432,23 @@ function vSettings() {
         : `<p class="small muted" style="margin:4px 0 0;">앱을 열 때 PIN을 입력하도록 잠글 수 있습니다. 민감한 금융 정보를 가려 줍니다.</p>
            <div class="btn-row"><button class="btn primary" data-x="setpin">PIN 설정</button></div>`}
       <p class="hint">PIN은 PC·폰 간 동기화됩니다(한 곳에서 설정하면 다른 기기에도 적용). 기기 잠금 화면 수준의 가벼운 보호이며, 기기 자체에 접근 가능한 사람으로부터 완벽히 막아 주지는 않습니다.</p>
+    </div>
+    <div class="card">
+      <h3>현금 잔액</h3>
+      <p class="small muted" style="margin:4px 0 0;">계좌의 실제 현금 잔액을 직접 입력하세요. 비워두면 자동(매도 대금 중 재투자 안 된 금액)으로 계산합니다.
+      이 값은 <b>홈의 총자산·현금 표시</b>에만 쓰이고, 수익률·평행우주 등 투자 성과 지표에는 영향을 주지 않습니다.</p>
+      <form id="cash-form" class="form-grid" style="margin-top:10px;">
+        <label class="fld">원화 현금 (원)
+          <input name="cashKRW" type="number" step="any" inputmode="numeric" value="${mc.KRW ?? ''}" placeholder="자동: ${Math.round(pf.cash.KRW).toLocaleString('ko-KR')}">
+        </label>
+        <label class="fld">달러 현금 ($)
+          <input name="cashUSD" type="number" step="any" inputmode="decimal" value="${mc.USD ?? ''}" placeholder="자동: ${(pf.cashUSD || 0).toFixed(2)}">
+        </label>
+        <div class="full btn-row" style="margin:0;">
+          <button class="btn primary" type="submit">저장</button>
+          <button type="button" class="btn" data-x="cashauto">자동으로 되돌리기</button>
+        </div>
+      </form>
     </div>
     <div class="card">
       <h3>회계 가정</h3>
@@ -503,6 +522,23 @@ vSettings.bind_ = (root) => {
     state.settings.depositRate = v;
     state.settings.updatedAt = Date.now();
     saveNow(); render(); toast(`예금 가정 금리를 연 ${v}%로 저장했습니다`);
+  });
+  const saveCash = (krw, usd) => {
+    state.settings.manualCash = { KRW: krw, USD: usd };
+    state.settings.updatedAt = Date.now();
+    saveNow(); render();
+  };
+  root.querySelector('#cash-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const f = e.target;
+    const parse = v => { v = v.trim(); if (v === '') return null; const n = parseFloat(v); return (isNaN(n) || n < 0) ? undefined : n; };
+    const krw = parse(f.cashKRW.value), usd = parse(f.cashUSD.value);
+    if (krw === undefined || usd === undefined) { toast('현금은 0 이상의 숫자로 입력하세요'); return; }
+    saveCash(krw, usd);
+    toast('현금 잔액을 저장했습니다');
+  });
+  root.querySelector('[data-x=cashauto]')?.addEventListener('click', () => {
+    saveCash(null, null); toast('현금을 자동 계산으로 되돌렸습니다');
   });
   root.querySelector('#name-form').addEventListener('submit', e => {
     e.preventDefault();
