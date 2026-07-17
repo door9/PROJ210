@@ -64,28 +64,61 @@ function lotValue(lot, date) {
   return { cur: P.currencyOf(lot.t.symbol), cost, value: g ? cost * g : cost, hasPrice: !!g };
 }
 
-// 통화별 순 투입 원금 = 밖에서 새로 끌어온 돈. 매수는 같은 통화의 앞선 매도 대금으로 먼저
-// 충당한 것으로 보므로, 팔고 다시 사는 것이 원금을 부풀리지 않는다(재투자분 이중계상 방지).
+// ---- 자금 원장: 밖에서 새로 들여온(내간) 돈만 골라낸다 --------------------------
 //
-// 여기 나오는 pool은 '재투자 가능한 매도 대금'을 추적하는 내부 장부일 뿐, 계좌의 현금 잔액이
-// 아니다(사용자가 뺐을 수도, 더 넣었을 수도 있다). 자산으로 쓰지 말 것 — 현금은 cashOn()이 답한다.
-// trades는 날짜순.
-function capitalFlow(trades, upto) {
+// pool = 앱이 설명할 수 있는 현금 = 매도 대금 중 아직 재매수에 안 쓴 것. 계좌의 실제 현금
+// 잔액이 아니다(사용자가 뺐을 수도, 더 넣었을 수도 있으니). 자산으로 쓰지 말 것.
+//
+// 규칙:
+//  - 매수: 같은 통화의 pool로 먼저 충당 → 나머지가 새 돈. 팔고 다시 사는 게 원금을 안 부풀린다.
+//  - 매도: 대금이 pool에 쌓인다.
+//  - 현금 입력: **사용자가 선언한 잔액이 진실이다.** 장부(pool)와 다르면 그 차액이 밖에서
+//    들어온(나간) 돈이므로 원금에 더한다(뺀다). 그리고 pool을 선언값으로 맞춘다.
+//    이걸 안 하면 입금해 두고 아직 안 산 돈이 원금엔 안 잡힌 채 평가액에만 더해져 수익률이
+//    부풀려진다(1000만 입금해 500만만 사고 500만을 현금으로 넣으면 +100%로 나왔다).
+//    pool을 맞춰 두므로, 그 현금으로 나중에 사는 것도 새 돈으로 잘못 세지 않는다.
+//
+// 현금 입력은 그날 장 마감 기준으로 본다 → 같은 날 매매를 다 처리한 뒤에 반영한다.
+export function capitalLedger(state, upto = null) {
+  const trades = sortedTrades(state);
   const pool = { KRW: 0, USD: 0 };
   const netCap = { KRW: 0, USD: 0 };
+  const events = [];   // 밖에서 들어온(나간) 돈 [{date, cur, amt, amtKRW}] — 평행우주가 쓴다
+  const entries = cashLog(state).filter(e => !upto || e.date <= upto);
+  let ei = 0;
+
+  const push = (date, cur, amt) => {
+    if (Math.abs(amt) > 1e-9) events.push({ date, cur, amt, amtKRW: P.toKRW(amt, cur, date) || 0 });
+  };
+  const applyCashEntry = (e) => {
+    for (const cur of ['KRW', 'USD']) {
+      const declared = e[cur] || 0;
+      const diff = declared - pool[cur];   // 장부보다 많으면 밖에서 온 돈, 적으면 인출
+      netCap[cur] += diff;
+      pool[cur] = declared;
+      push(e.date, cur, diff);
+    }
+  };
+
   for (const t of trades) {
-    if (t.date > upto) break;
+    if (upto && t.date > upto) break;
+    while (ei < entries.length && entries[ei].date < t.date) applyCashEntry(entries[ei++]);
     const cur = P.currencyOf(t.symbol);
     if (t.side === 'buy') {
       const cost = t.price * t.qty + (t.fee || 0);
       const fromPool = Math.min(pool[cur], cost);
       pool[cur] -= fromPool;
-      netCap[cur] += cost - fromPool;
+      const ext = cost - fromPool;
+      netCap[cur] += ext;
+      push(t.date, cur, ext);
     } else {
       pool[cur] += t.price * t.qty - (t.fee || 0);
     }
   }
-  return { pool, netCap };
+  while (ei < entries.length) applyCashEntry(entries[ei++]);
+
+  events.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  return { pool, netCap, events };
 }
 
 // ---- 현금: 사용자가 직접 입력한 잔액 -------------------------------------------
@@ -141,8 +174,9 @@ export function portfolio(state, date = null) {
   rows.forEach(r => r.weight = investedKRW > 0 ? (r.valueKRW || 0) / investedKRW : 0);
   rows.sort((a, b) => (b.valueKRW || 0) - (a.valueKRW || 0));
 
-  // 통화별 순 투입 원금 (투입 원금은 환산하지 않고 통화 그대로 집계)
-  const { netCap } = capitalFlow(trades, d);
+  // 통화별 순 투입 원금 = 밖에서 들여온 순 자본 (환산하지 않고 통화 그대로 집계).
+  // 현금을 입력했으면 그 선언값으로 장부를 맞추므로, 아직 투자 안 한 입금분도 원금에 잡힌다.
+  const { netCap } = capitalLedger(state, d);
 
   // 보유 종목 평가액(통화별, 현지 통화)
   const hold = { KRW: 0, USD: 0 };
@@ -183,27 +217,6 @@ export function portfolio(state, date = null) {
   };
 }
 
-// 밖에서 새로 끌어온 돈만 뽑아낸다 — 매도 대금으로 다시 산 것은 새 투입이 아니다.
-// 이걸 안 하면 팔고 사기를 반복한 횟수만큼 '투입 원금'이 불어나, 평행우주의 지수·예금
-// 세계가 실제로는 넣은 적 없는 돈까지 굴린 것처럼 부풀려진다. [{date, cur, amt, amtKRW}]
-export function externalContributions(trades) {
-  const pool = { KRW: 0, USD: 0 };
-  const ev = [];
-  for (const t of trades) {
-    const cur = P.currencyOf(t.symbol);
-    if (t.side === 'buy') {
-      const cost = t.price * t.qty + (t.fee || 0);
-      const fromPool = Math.min(pool[cur], cost);
-      pool[cur] -= fromPool;
-      const ext = cost - fromPool;
-      if (ext > 1e-9) ev.push({ date: t.date, cur, amt: ext, amtKRW: P.toKRW(ext, cur, t.date) || 0 });
-    } else {
-      pool[cur] += t.price * t.qty - (t.fee || 0);
-    }
-  }
-  return ev;
-}
-
 // ---- 평행우주 ---------------------------------------------------------------
 export function worlds(state) {
   const trades = sortedTrades(state);
@@ -220,8 +233,9 @@ export function worlds(state) {
   for (const t of trades) set.add(t.date);
   const dates = [...set].sort();
 
-  // 모든 세계는 "밖에서 새로 넣은 돈"만 굴린다 — 실제의 나와 조건을 맞춰야 비교가 공정하다
-  const contribs = externalContributions(trades);
+  // 모든 세계는 "밖에서 새로 들여온 돈"만 굴린다 — 실제의 나와 조건을 맞춰야 비교가 공정하다.
+  // 홈의 투입 원금과 같은 원장을 쓰므로 두 화면의 기준이 어긋나지 않는다.
+  const contribs = capitalLedger(state).events;
 
   // 지수 세계의 매입 단위 미리 계산
   const kUnits = [], sUnits = [];
