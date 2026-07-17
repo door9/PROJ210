@@ -233,8 +233,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 }
 /* margin:auto + 부모 overflow — flex 가운데 정렬이 넘치는 내용을 잘라먹는 문제를 피하는 조합 */
 .lock-box { width: 100%; max-width: 300px; text-align: center; margin: auto; }
-.lock-logo { font-size: 40px; }
-.lock-title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-top: 6px; }
+/* 자물쇠 — 이모지(🔒)는 기기마다 제 색으로 그려져 앱 톤과 따로 논다. 나머지 아이콘과 같은 선 아이콘으로 */
+.lock-logo { color: var(--sub); display: flex; justify-content: center; }
+.lock-logo svg { width: 22px; height: 22px; display: block; }
+.lock-title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-top: 10px; }
 .lock-sub { color: var(--sub); font-size: 13.5px; margin: 4px 0 18px; }
 .lock-input {
   width: 100%; text-align: center; letter-spacing: 0.4em; font-size: 22px;

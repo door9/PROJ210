@@ -1,7 +1,7 @@
 // 앱 잠금(PIN). PIN 해시를 settings에 저장 → Dropbox로 PC·폰 동기화됨(평문 PIN이 아니라 SHA-256 해시).
 // 주의: 데이터는 브라우저 localStorage에 있으므로 기기에 접근 가능한 사람으로부터 완벽히
 // 막아주지는 못한다(기기 잠금 화면 수준의 가벼운 보호). UI 접근을 가리는 용도.
-import { state, saveNow } from './core.js';
+import { state, saveNow, ICONS } from './core.js';
 import { esc } from './util.js';
 
 const SALT = 'proj210.pin.v1';
@@ -45,7 +45,7 @@ export function showLock() {
     root.innerHTML = `
       <div class="lock-back">
         <div class="lock-box">
-          <div class="lock-logo">🔒</div>
+          <div class="lock-logo">${ICONS.lock}</div>
           <div class="lock-title">PROJ210</div>
           <div class="lock-sub">PIN 번호를 입력하세요</div>
           <input id="lock-pin" class="lock-input" type="password" inputmode="numeric" autocomplete="off" maxlength="12">

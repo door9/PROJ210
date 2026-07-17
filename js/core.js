@@ -67,6 +67,7 @@ export const ICONS = {
   cost: svg('<circle cx="12" cy="12" r="8.3"/><path d="M9.2 15.2c.6.8 1.6 1.3 2.8 1.3 1.7 0 2.8-.9 2.8-2.2 0-2.9-5.2-1.6-5.2-4.4 0-1.2 1-2.1 2.6-2.1 1.1 0 2 .5 2.6 1.2"/><path d="M12 6.6v10.8"/>'),
   settings: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.7M12 18.5v2.7M2.8 12h2.7M18.5 12h2.7M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9"/>'),
   returns: svg('<path d="M4 4v16h16"/><path d="M8 16v-4M13 16v-8M18 16v-6"/>'),
+  lock: svg('<rect x="4.8" y="10.5" width="14.4" height="9.7" rx="2"/><path d="M8.2 10.5V7.6a3.8 3.8 0 017.6 0v2.9"/>'),
 };
 
 export const NAV = [
