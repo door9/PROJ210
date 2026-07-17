@@ -181,9 +181,14 @@ vHome.bind_ = (root) => {
 registerView('home', vHome);
 
 // ---------- 매매 기록 아이템 (기록 페이지·종목 페이지 공용) ----------
-function tradeItemHtml(t, r) {
+// link=true면 종목명을 그 종목 상세(매매 기록만 모아 보기)로 가는 링크로 만든다.
+// 종목 상세 페이지 자체에선 이미 그 종목이므로 링크를 끈다(자기 자신 링크 방지).
+function tradeItemHtml(t, r, { link = true } = {}) {
   const cur = P.currencyOf(t.symbol);
   const amt = t.price * t.qty;
+  const nameHtml = link
+    ? `<a class="nm" href="#/symbol/${encodeURIComponent(t.symbol)}">${esc(t.name || t.symbol)} <span class="chev">›</span></a>`
+    : `<span class="nm">${esc(t.name || t.symbol)}</span>`;
   // 메타 칩(매도이유·실현·보유·감정 등) — 있을 때만 한 줄 추가한다. 버튼은 제목줄로 올려
   // 메모 없는 매매가 불필요하게 세 줄로 늘어나지 않게 한다(빈 줄 = 행 높이 낭비).
   const chips = [];
@@ -199,7 +204,7 @@ function tradeItemHtml(t, r) {
     <div class="trade-item" data-id="${t.id}">
       <div class="trade-head">
         <span class="tag ${t.side}">${t.side === 'buy' ? '매수' : '매도'}</span>
-        <span class="nm">${esc(t.name || t.symbol)}</span>
+        ${nameHtml}
         <span class="dt">${t.date}</span>
         ${t.sample ? '<span class="tag warn">예시</span>' : ''}
         ${chips.length ? `<span class="chips">${chips.join('')}</span>` : ''}
@@ -289,16 +294,22 @@ function vSymbol(symbol) {
       ${symRealized.length ? stat('실현 손익', `${fmtMoney(realizedPnl, cur)}${realizedCost > 0 ? ` (${fmtPct(realizedPnl / realizedCost)})` : ''}`, pctClass(realizedPnl)) : ''}
     </table></div>`;
 
-  const items = symTrades.map(t => tradeItemHtml(t, retBySell.get(t.id))).join('');
+  const items = symTrades.map(t => tradeItemHtml(t, retBySell.get(t.id), { link: false })).join('');
 
   return `
     <div class="view-title">${esc(name)}</div>
     <p class="view-desc">${esc(symbol)}${last ? ` · 현재가 ${fmtMoney(last.close, cur)} <span class="muted">(${P.lastStamp(symbol)})</span>` : ' · 시세 없음'}${frozen ? ` <span class="tag warn">${frozen}부터 시세 멈춤</span>` : ''}</p>
     <div class="card"><h3>현황</h3>${summary}</div>
     <div class="card"><h3>매매 기록 (${symTrades.length}건)</h3>${items}</div>
-    <div class="btn-row"><a class="btn" href="#/home">← 홈으로</a></div>`;
+    <div class="btn-row"><button class="btn" data-act="back">← 뒤로</button></div>`;
 }
-vSymbol.bind_ = (root) => { bindTradeItems(root); };
+vSymbol.bind_ = (root) => {
+  bindTradeItems(root);
+  // 온 곳(기록·홈 등)으로 되돌아간다. 히스토리가 없으면 홈.
+  root.querySelector('[data-act=back]')?.addEventListener('click', () => {
+    if (history.length > 1) history.back(); else go('home');
+  });
+};
 registerView('symbol', vSymbol);
 
 // ---------- 매매 입력 폼 ----------

@@ -198,6 +198,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .trade-item:last-child { border-bottom: none; }
 .trade-head { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
 .trade-head .nm { font-weight: 700; }
+/* 종목명 = 그 종목 매매기록만 모아 보기로 가는 링크 */
+.trade-head a.nm { color: inherit; text-decoration: none; }
+.trade-head a.nm:hover { color: var(--accent); }
+.trade-head a.nm .chev { color: var(--sub); font-weight: 400; margin-left: 1px; }
+.trade-head a.nm:hover .chev { color: var(--accent); }
 .trade-head .dt { color: var(--sub); font-size: 12.5px; }
 .trade-head .amt { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 13.5px; }
 .trade-head .acts { display: flex; gap: 6px; flex: none; }
