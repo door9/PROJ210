@@ -8,6 +8,7 @@ import { state, render, renderIfIdle, refreshPriceStatus, initTopbar, toast } fr
 import './views-main.js';
 import './views-insight.js';
 import './views-write.js';
+import './views-funds.js';
 
 async function init() {
   // Dropbox OAuth 복귀 처리

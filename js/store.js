@@ -20,9 +20,71 @@ export function defaultState() {
     watchlist: [],   // 관심 종목 (안 산 판단의 기록)
     swaps: [],       // 교체 시뮬레이션 (보유 A → 관심 B 가정)
     loans: [],       // 투자용 대출(마이너스통장 등) 잔액 스냅샷 — 이자 비용 추적
+    archives: [],    // 청산한 펀드 세대 (2ⁿ) — 아래 closeFund 참고
     deleted: {},     // tombstone: {id: 삭제시각} — 동기화 시 부활 방지
     pendingSymbols: [], // 시세 파일이 아직 없는 심볼 (기기 로컬, 동기화 안 함)
   };
+}
+
+// ---- 펀드 세대(2ⁿ): 청산과 복원 ------------------------------------------------
+//
+// 청산 시 보관하고 비우는 기록. 글귀 서랍(quotes)은 펀드가 아니라 책에서 온 것이라 남긴다.
+// 설정(저장소·PIN·예금 가정 금리)도 앱 설정이지 펀드 기록이 아니므로 남는다.
+export const FUND_COLLS = ['trades', 'diary', 'principles', 'letters', 'watchlist', 'swaps', 'loans'];
+
+// 지금 펀드를 청산해 archives에 넣고 장부를 비운다.
+// summary는 engine.fundSummary가 청산 시점에 계산한 성적표 — 열람할 때 다시 계산하지 않는다.
+export function closeFund(state, { name, from, to, note, summary, newName, newInception }) {
+  const now = Date.now();
+  const snapshot = {};
+  for (const c of FUND_COLLS) snapshot[c] = JSON.parse(JSON.stringify(state[c] || []));
+  snapshot.cashLog = JSON.parse(JSON.stringify(state.settings.cashLog || []));
+  snapshot.depositRate = state.settings.depositRate ?? 3;
+  snapshot.inception = state.settings.inception || null;  // 복원할 때 이 펀드의 시작일을 되돌리려고
+
+  const ar = {
+    id: uid(),
+    gen: (state.archives || []).length + 1,
+    name, from, to, note: note || '',
+    closedAt: now, summary, snapshot,
+    createdAt: now, updatedAt: now,
+  };
+  state.archives = [...(state.archives || []), ar];
+
+  // 비우기 — 반드시 tombstone을 남긴다. 안 그러면 다른 기기의 Dropbox 사본이 "여긴 아직
+  // 있는데?" 하며 방금 청산한 기록을 통째로 되살린다(병합은 id 단위 updatedAt 비교라
+  // '로컬에서 사라졌다'를 알 방법이 tombstone밖에 없다).
+  state.deleted = state.deleted || {};
+  for (const c of FUND_COLLS) {
+    for (const it of state[c] || []) state.deleted[it.id] = now;
+    state[c] = [];
+  }
+  state.settings.fundName = newName || name;
+  state.settings.inception = newInception || to;
+  state.settings.cashLog = [];
+  state.settings.updatedAt = now;
+  return ar;
+}
+
+// 청산 되돌리기. 잘못 눌렀을 때를 위한 것이라, 새 펀드에 아직 아무 기록도 없을 때만 부른다.
+// 되살리는 항목은 updatedAt을 지금으로 올린다 — 그래야 청산 때 찍은 tombstone(원격에도
+// 퍼졌다)을 이기고 다른 기기에서도 되살아난다.
+export function restoreFund(state, id) {
+  const ar = (state.archives || []).find(a => a.id === id);
+  if (!ar) return false;
+  const now = Date.now();
+  for (const c of FUND_COLLS) {
+    state[c] = (ar.snapshot[c] || []).map(it => ({ ...it, updatedAt: now }));
+    for (const it of state[c]) delete state.deleted?.[it.id];
+  }
+  state.settings.fundName = ar.name;
+  state.settings.cashLog = JSON.parse(JSON.stringify(ar.snapshot.cashLog || []));
+  state.settings.inception = ar.snapshot.inception || null;
+  state.settings.updatedAt = now;
+  state.archives = state.archives.filter(a => a.id !== id);
+  state.deleted = state.deleted || {};
+  state.deleted[id] = now;   // 보관본 자체도 tombstone — 다른 기기에서 부활하지 않게
+  return true;
 }
 
 // 현금 잔액 입력 한 줄 기록 (같은 기준일이면 덮어쓰기). 홈·설정 양쪽이 공용으로 쓴다.

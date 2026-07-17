@@ -218,12 +218,13 @@ export function portfolio(state, date = null) {
 }
 
 // ---- 평행우주 ---------------------------------------------------------------
-export function worlds(state) {
-  const trades = sortedTrades(state);
+// upto: 그날까지만 계산 (펀드 청산 요약이 청산일 시점 값을 얼릴 때 쓴다). 없으면 오늘까지.
+export function worlds(state, upto = null) {
+  const end = upto || todayStr();
+  const trades = sortedTrades(state).filter(t => t.date <= end);
   const buys = trades.filter(t => t.side === 'buy');
   if (!buys.length) return null;
   const start = buys[0].date;
-  const end = todayStr();
 
   // 날짜 그리드: 시작~오늘, 약 200~300개 지점 + 거래일
   const span = Math.max(1, daysBetween(start, end));
@@ -235,7 +236,7 @@ export function worlds(state) {
 
   // 모든 세계는 "밖에서 새로 들여온 돈"만 굴린다 — 실제의 나와 조건을 맞춰야 비교가 공정하다.
   // 홈의 투입 원금과 같은 원장을 쓰므로 두 화면의 기준이 어긋나지 않는다.
-  const contribs = capitalLedger(state).events;
+  const contribs = capitalLedger(state, end).events;
 
   // 지수 세계의 매입 단위 미리 계산
   const kUnits = [], sUnits = [];
@@ -497,14 +498,15 @@ export function swapRows(state) {
 // ---- 투자 비용: 대출 이자 (계좌별 독립) ----------------------------------------
 // loans: 대출 계좌 목록 [{name, balance, rate(연%), startDate, endDate(null=보유중), note}].
 // 각 계좌는 startDate부터 endDate(없으면 오늘)까지 병렬로 이자가 쌓인다(잔액×연율×일수/365).
-export function loanStatus(state) {
+// asOf: 그 시점 기준으로 계산 (청산 요약이 청산일 기준 이자를 얼릴 때 쓴다). 없으면 오늘.
+export function loanStatus(state, asOf = null) {
   const loans = state.loans || [];
   if (!loans.length) return null;
-  const today = todayStr();
+  const today = asOf || todayStr();
 
   const accounts = loans.map(l => {
-    const open = !l.endDate;
-    const end = l.endDate || today;
+    const open = !l.endDate || l.endDate > today;   // 기준일에 아직 안 갚았으면 보유 중
+    const end = (l.endDate && l.endDate < today) ? l.endDate : today;
     const days = Math.max(0, daysBetween(l.startDate, end));
     return {
       ...l, open, end, days,
@@ -523,9 +525,9 @@ export function loanStatus(state) {
 
   // 이자 비용을 반영한 실질 손익 + 레버리지가 값을 하는지(펀드 연환산 수익률 vs 평균 대출 금리)
   const pf = portfolio(state, today);
-  const trades = sortedTrades(state);
-  const fundStart = trades.length ? trades[0].date : accounts[0].startDate;
-  const fundDays = Math.max(1, daysBetween(fundStart, today));
+  const trades = sortedTrades(state).filter(t => t.date <= today);
+  const firstDay = trades.length ? trades[0].date : accounts[0].startDate;
+  const fundDays = Math.max(1, daysBetween(firstDay, today));
   const annualized = (pf.ret != null && pf.deposits > 0)
     ? Math.pow(1 + pf.ret, 365 / fundDays) - 1 : null;
 
@@ -770,4 +772,80 @@ export function aiPack(state) {
   L.push('4. 마지막에, 다음 분기에 지킬 행동 규칙을 딱 2개만 제안할 것. 추상적 조언 금지.');
   L.push('5. 종목 추천이나 시장 전망은 하지 말 것. 이 대화의 주제는 시장이 아니라 이 사람의 행동이다.');
   return L.join('\n');
+}
+
+// ---- 펀드 세대(2ⁿ) ------------------------------------------------------------
+//
+// 지금 굴리는 펀드를 청산하고 새 펀드를 시작할 수 있다. 청산하면 그 펀드의 기록은
+// archives에 통째로 보관되고 장부는 빈 채로 다시 시작한다.
+
+// 이 펀드가 시작한 날. 청산 후 새로 시작한 펀드는 settings.inception이 그 날이고,
+// 첫 펀드는 그런 게 없으니 첫 매매일이 시작이다. 둘 다 있으면 이른 쪽.
+export function fundStart(state) {
+  const first = sortedTrades(state)[0]?.date || null;
+  const inc = state.settings?.inception || null;
+  if (inc && first) return inc < first ? inc : first;
+  return inc || first;
+}
+
+// 청산 시점의 성적표를 통째로 계산한다.
+//
+// **이 값은 청산 순간에 딱 한 번 계산해 저장해 두고, 열람할 때는 다시 계산하지 않는다.**
+// 청산한 펀드의 성적은 그 뒤로 시세가 어떻게 움직이든 변하면 안 되기 때문이다. 다시 계산하면
+// 볼 때마다 숫자가 달라져 "그때 내가 얼마로 끝냈나"라는 기록 자체가 성립하지 않는다.
+export function fundSummary(state, closeDate) {
+  const d = closeDate;
+  const trades = sortedTrades(state).filter(t => t.date <= d);
+  const pf = portfolio(state, d);
+  const { realized } = replay(trades, d);
+  const w = worlds(state, d);
+  const li = w ? w.dates.length - 1 : -1;
+
+  // 전 기간 시간가중 수익률 — 첫 거래 전날(평가액 0)부터 청산일까지
+  const first = trades[0]?.date || null;
+  const twr = first ? twrCalculator(state).ret(addDaysStr(first, -1), 0, d) : null;
+
+  // 종목별 실현 손익 — 이 펀드가 실제로 무엇을 했는지가 여기 남는다
+  const bySym = new Map();
+  for (const r of realized) {
+    const sym = r.sell.symbol;
+    if (!bySym.has(sym)) {
+      bySym.set(sym, { symbol: sym, name: r.sell.name || sym, cur: P.currencyOf(sym), pnl: 0, cost: 0, count: 0 });
+    }
+    const x = bySym.get(sym);
+    x.pnl += r.pnl; x.cost += r.costSum; x.count++;
+  }
+  const realizedBySym = [...bySym.values()]
+    .map(x => ({ ...x, ret: x.cost > 0 ? x.pnl / x.cost : null, pnlKRW: P.toKRW(x.pnl, x.cur, d) || 0 }))
+    .sort((a, b) => b.pnlKRW - a.pnlKRW);
+
+  const ln = loanStatus(state, d);
+  return {
+    closeDate: d,
+    // 평가
+    totalKRW: pf.totalKRW, investedKRW: pf.investedKRW, cashKRW: pf.cashKRW,
+    depositKRW: pf.depositKRW, depositUSD: pf.depositUSD,
+    cash: pf.cash, holdKRW: pf.holdKRW, holdUSD: pf.holdUSD,
+    fx: pf.fx, sleeves: pf.sleeves, deposits: pf.deposits, profit: pf.profit, ret: pf.ret, twr,
+    cashTracked: pf.cashTracked, cashSince: pf.cashSince,
+    // 청산 시점에 남아 있던 보유 종목 (전량 매도했다면 빈 배열)
+    rows: pf.rows.map(r => ({
+      symbol: r.symbol, name: r.name, cur: r.cur, qty: r.qty,
+      cost: r.cost, value: r.value, valueKRW: r.valueKRW, ret: r.ret, weight: r.weight, firstBuy: r.firstBuy,
+    })),
+    realizedBySym,
+    realizedPnlKRW: realized.reduce((s, r) => s + (P.toKRW(r.pnl, P.currencyOf(r.sell.symbol), r.sell.date) || 0), 0),
+    counts: {
+      trades: trades.length,
+      buys: trades.filter(t => t.side === 'buy').length,
+      sells: trades.filter(t => t.side === 'sell').length,
+      symbols: new Set(trades.map(t => t.symbol)).size,
+      diary: (state.diary || []).length,
+      letters: (state.letters || []).length,
+      watch: (state.watchlist || []).length,
+      swaps: (state.swaps || []).length,
+    },
+    worlds: w ? { actual: w.actual[li], kospi: w.kospi[li], sp500: w.sp500[li], bank: w.bank[li], rate: w.rate } : null,
+    loan: ln ? { cumulative: ln.cumulative, balance: ln.balance, accounts: ln.accounts.length, netProfit: ln.netProfit } : null,
+  };
 }

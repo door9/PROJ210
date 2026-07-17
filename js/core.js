@@ -68,6 +68,8 @@ export const ICONS = {
   settings: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.7M12 18.5v2.7M2.8 12h2.7M18.5 12h2.7M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9"/>'),
   returns: svg('<path d="M4 4v16h16"/><path d="M8 16v-4M13 16v-8M18 16v-6"/>'),
   lock: svg('<rect x="4.8" y="10.5" width="14.4" height="9.7" rx="2"/><path d="M8.2 10.5V7.6a3.8 3.8 0 017.6 0v2.9"/>'),
+  // 겹쳐 쌓인 장부 = 청산하고 다시 시작한 펀드 세대
+  funds: svg('<rect x="3.5" y="8.5" width="12" height="12" rx="2"/><path d="M7.5 8.5V5.5a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2h-3"/>'),
 };
 
 export const NAV = [
@@ -79,7 +81,7 @@ export const NAV = [
 ];
 export const NAV_DESKTOP = [
   ['home', '홈'], ['trades', '기록'], ['watch', '관심'], ['returns', '수익'], ['worlds', '만약'], ['actions', '회상'],
-  ['diary', '일지'], ['cost', '비용'], ['quotes', '글귀'], ['letters', '서한'], ['ai', '복기'], ['settings', '설정'],
+  ['diary', '일지'], ['cost', '비용'], ['quotes', '글귀'], ['letters', '서한'], ['ai', '복기'], ['funds', '2ⁿ'], ['settings', '설정'],
 ];
 
 export function currentRoute() {
