@@ -63,7 +63,7 @@ function vHome() {
         <h3>아직 기록이 없습니다</h3>
         <p class="small muted" style="margin:6px 0 0;">
           이 앱은 매매의 <b>결과</b>가 아니라 <b>판단</b>을 기록하고, 시간이 지난 뒤 그 판단을 채점합니다.<br><br>
-          · <b>평행우주</b> — 지수만 샀다면·예금만 했다면 지금 얼마인가<br>
+          · <b>만약</b> — 지수만 샀다면·예금만 했다면 지금 얼마인가<br>
           · <b>회상</b> — 판 뒤 그 주식은 어떻게 됐나, 물타기는 지수보다 나았나<br>
           · <b>홀딩 일지</b> — 흔들린 순간이 신호였나 소음이었나<br>
           · <b>주주 서한</b> — 분기마다 나에게 쓰는 운용보고서<br>
@@ -156,7 +156,7 @@ function vHome() {
       <div class="kpi"><div class="k">S&P500만 샀다면</div><div class="v">${moneyKorean(w.sp500[li])}</div><div class="s ${pctClass(w.sp500[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.sp500[li] - w.actual[li])}</div></div>
       <div class="kpi"><div class="k">예금만 했다면 (연 ${w.rate}%)</div><div class="v">${moneyKorean(w.bank[li])}</div><div class="s ${pctClass(w.bank[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.bank[li] - w.actual[li])}</div></div>
     </div>
-    <p class="small muted" style="margin:6px 2px 14px;">자세한 곡선은 <a href="#/worlds">평행우주</a>에서.</p>` : ''}
+    <p class="small muted" style="margin:6px 2px 14px;">자세한 곡선은 <a href="#/worlds">만약</a>에서.</p>` : ''}
     <div class="card">
       <h3>보유 종목</h3>
       <div class="tbl-wrap"><table class="tbl">

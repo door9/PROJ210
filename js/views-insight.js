@@ -14,7 +14,7 @@ const C = {
 function vWorlds() {
   const w = E.worlds(state);
   if (!w) {
-    return `<div class="view-title">평행우주</div>
+    return `<div class="view-title">만약</div>
       <p class="view-desc">매매 기록이 생기면, "다르게 했다면 지금 얼마인가"를 자동 계산합니다.</p>
       <div class="empty">아직 매수 기록이 없습니다</div>`;
   }
@@ -41,7 +41,7 @@ function vWorlds() {
   });
 
   return `
-    <div class="view-title">평행우주</div>
+    <div class="view-title">만약</div>
     <p class="view-desc">같은 돈으로 다르게 했다면. 계좌 잔고는 누구나 보지만, 대안과의 차이는 아무도 보여주지 않습니다.</p>
     <div class="card">${chart}</div>
     <div class="card">

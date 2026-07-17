@@ -695,7 +695,7 @@ export function aiPack(state) {
   L.push(`- 현금: ${pf.cashTracked ? `${fmtMoney(pf.cash.KRW)} + ${fmtMoney(pf.cash.USD, 'USD')} (${pf.cashSince}부터 직접 입력, 위 현재 가치에 포함)` : '직접 입력한 적 없음 → 위 수치는 보유 주식만 합산한 것'}`);
   if (w) {
     const last = w.dates.length - 1;
-    L.push(`- 평행우주(같은 매수를 했을 때의 현재 가치): 실제 ${fmtMoney(w.actual[last])} / 코스피만 샀다면 ${fmtMoney(w.kospi[last])} / S&P500만 샀다면 ${fmtMoney(w.sp500[last])} / 예금(연 ${w.rate}%)만 했다면 ${fmtMoney(w.bank[last])}`);
+    L.push(`- 만약(같은 돈을 다르게 굴렸을 때의 현재 가치): 실제 ${fmtMoney(w.actual[last])} / 코스피만 샀다면 ${fmtMoney(w.kospi[last])} / S&P500만 샀다면 ${fmtMoney(w.sp500[last])} / 예금(연 ${w.rate}%)만 했다면 ${fmtMoney(w.bank[last])}`);
   }
   L.push('');
   L.push('## 보유 종목');
