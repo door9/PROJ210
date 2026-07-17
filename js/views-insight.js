@@ -4,7 +4,7 @@ import * as Store from './store.js';
 import * as P from './prices.js';
 import * as E from './engine.js';
 import { uid, todayStr, esc, fmtMoney, fmtPct, fmtQty, pctClass } from './util.js';
-import { lineChart, moneyShort } from './chart.js';
+import { lineChart, moneyShort, bindCharts } from './chart.js';
 
 const C = {
   actual: '#0f9d6a', kospi: '#8a8a8a', sp500: '#8b5cc9', bank: '#3b7ea1', deposits: '#c65ea8',
@@ -31,6 +31,7 @@ function vWorlds() {
 
   const chart = lineChart({
     labels: w.dates,
+    format: v => fmtMoney(v),   // 툴팁엔 정확한 금액(축 눈금은 축약)
     series: [
       { label: '실제의 나', color: C.actual, values: w.actual },
       { label: '코스피만', color: C.kospi, values: w.kospi },
@@ -61,6 +62,7 @@ function vWorlds() {
     </div>
     <p class="small muted" style="margin:0 2px;">매도·물타기 하나하나의 채점은 <a href="#/actions">회상</a>에서.</p>`;
 }
+vWorlds.bind_ = (root) => bindCharts(root);
 registerView('worlds', vWorlds);
 
 // ---------- 개입 점수 ----------

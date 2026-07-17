@@ -218,6 +218,23 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 /* 차트 */
 .chart-wrap { width: 100%; overflow: hidden; }
 .chart-wrap svg { width: 100%; height: auto; display: block; }
+/* 상호작용 라인 차트 (만약) */
+.chartbox { position: relative; color: var(--ink); }
+.chart-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.chart-toolbar .chart-hint { margin-left: auto; }
+@media (max-width: 560px) { .chart-toolbar .chart-hint { display: none; } }
+.chart-scroll { position: relative; width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+.chart-tip {
+  position: absolute; z-index: 6; pointer-events: none;
+  background: var(--card); border: 1px solid var(--line); border-radius: 9px;
+  padding: 7px 9px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  font-size: 12px; min-width: 150px; max-width: 240px;
+}
+.chart-tip .tip-date { font-weight: 700; font-size: 11.5px; color: var(--sub); margin-bottom: 4px; }
+.chart-tip .tip-row { display: flex; align-items: center; gap: 6px; line-height: 1.75; }
+.chart-tip .tip-row .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.chart-tip .tip-nm { flex: 1; white-space: nowrap; }
+.chart-tip .tip-v { font-variant-numeric: tabular-nums; font-weight: 600; margin-left: 12px; white-space: nowrap; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--sub); margin-top: 8px; }
 .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 

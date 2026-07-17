@@ -1,5 +1,6 @@
-// 의존성 없는 간단 SVG 라인 차트
+// 의존성 없는 상호작용 SVG 라인 차트 — 호버 툴팁 + 가로 확대(면적 고정, 스크롤)
 // series: [{ label, color, values: number[], dash?: bool }], labels: string[](날짜)
+// 그리는 건 lineChart()가 아니라 bindCharts()가 (마운트 후 실제 폭을 재서) 한다.
 
 export function moneyShort(v) {
   if (v == null || isNaN(v)) return '';
@@ -9,44 +10,143 @@ export function moneyShort(v) {
   return Math.round(v).toLocaleString();
 }
 
-export function lineChart({ series, labels, height = 300 }) {
-  const W = 820, H = height, padL = 56, padR = 10, padT = 12, padB = 26;
-  const all = series.flatMap(s => s.values).filter(v => v != null && isFinite(v));
-  if (!all.length) return '<div class="empty">표시할 데이터가 없습니다</div>';
-  let min = Math.min(...all), max = Math.max(...all);
-  if (min === max) { min -= 1; max += 1; }
-  const span = max - min;
-  min -= span * 0.05; max += span * 0.05;
-  const n = labels.length;
-  const x = i => padL + (n <= 1 ? 0 : (W - padL - padR) * i / (n - 1));
-  const y = v => padT + (H - padT - padB) * (1 - (v - min) / (max - min));
+const registry = new Map(); // id -> { series, labels, height, format, zoom, geom, lastW }
+let seq = 0;
 
-  let g = '';
-  // y축 눈금 4개
-  for (let k = 0; k <= 4; k++) {
-    const v = min + (max - min) * k / 4;
-    const yy = y(v);
-    g += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="currentColor" stroke-opacity="0.09"/>`;
-    g += `<text x="${padL - 6}" y="${yy + 4}" text-anchor="end" font-size="11" fill="currentColor" fill-opacity="0.55">${moneyShort(v)}</text>`;
-  }
-  // x축 라벨 4개
-  for (let k = 0; k <= 3; k++) {
-    const i = Math.round((n - 1) * k / 3);
-    if (i < 0 || i >= n) continue;
-    g += `<text x="${x(i)}" y="${H - 8}" text-anchor="${k === 0 ? 'start' : k === 3 ? 'end' : 'middle'}" font-size="11" fill="currentColor" fill-opacity="0.55">${labels[i]?.slice(0, 7) ?? ''}</text>`;
-  }
-  // 선
-  for (const s of series) {
-    let dcmd = '', pen = false;
-    for (let i = 0; i < n; i++) {
-      const v = s.values[i];
-      if (v == null || !isFinite(v)) { pen = false; continue; }
-      dcmd += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1);
-      pen = true;
-    }
-    if (dcmd) g += `<path d="${dcmd}" fill="none" stroke="${s.color}" stroke-width="1.5" ${s.dash ? 'stroke-dasharray="5 4" stroke-width="1.2"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`;
-  }
+// 셸만 반환한다(툴바·스크롤 영역·툴팁·범례). 실제 SVG는 bindCharts에서 그린다.
+export function lineChart({ series, labels, height = 300, format = moneyShort }) {
+  const id = 'ch' + (++seq);
+  registry.set(id, { series, labels, height, format, zoom: 1, geom: null, lastW: 0 });
   const legend = series.map(s =>
     `<span><span class="sw" style="background:${s.color}"></span>${s.label}</span>`).join('');
-  return `<div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg></div><div class="legend">${legend}</div>`;
+  return `
+    <div class="chartbox" data-chart="${id}">
+      <div class="chart-toolbar">
+        <button type="button" class="btn small" data-zoom="in">확대 +</button>
+        <button type="button" class="btn small" data-zoom="reset">전체</button>
+        <span class="chart-zoom muted small"></span>
+        <span class="chart-hint muted small">선 위에 마우스를 올리면 값이 보입니다</span>
+      </div>
+      <div class="chart-scroll" style="height:${height}px"></div>
+      <div class="chart-tip" hidden></div>
+      <div class="legend">${legend}</div>
+    </div>`;
+}
+
+function geomFor(cfg, W, H) {
+  const padL = 56, padR = 12, padT = 12, padB = 26;
+  const all = cfg.series.flatMap(s => s.values).filter(v => v != null && isFinite(v));
+  let min = all.length ? Math.min(...all) : 0, max = all.length ? Math.max(...all) : 1;
+  if (min === max) { min -= 1; max += 1; }
+  const span = max - min; min -= span * 0.05; max += span * 0.05;
+  return { W, H, padL, padR, padT, padB, min, max, n: cfg.labels.length };
+}
+const gx = (G, i) => G.padL + (G.n <= 1 ? 0 : (G.W - G.padL - G.padR) * i / (G.n - 1));
+const gy = (G, v) => G.padT + (G.H - G.padT - G.padB) * (1 - (v - G.min) / (G.max - G.min));
+
+function svgFor(cfg, W, H) {
+  const G = geomFor(cfg, W, H);
+  cfg.geom = G;
+  const plotW = W - G.padL - G.padR;
+  let g = '';
+  for (let k = 0; k <= 4; k++) { // y 눈금
+    const v = G.min + (G.max - G.min) * k / 4, yy = gy(G, v);
+    g += `<line x1="${G.padL}" y1="${yy}" x2="${W - G.padR}" y2="${yy}" stroke="currentColor" stroke-opacity="0.09"/>`;
+    g += `<text x="${G.padL - 6}" y="${yy + 4}" text-anchor="end" font-size="11" fill="currentColor" fill-opacity="0.55">${moneyShort(v)}</text>`;
+  }
+  const ticks = Math.max(3, Math.min(12, Math.round(plotW / 90))); // 확대할수록 촘촘히
+  for (let k = 0; k <= ticks; k++) { // x 라벨
+    const i = Math.round((G.n - 1) * k / ticks);
+    if (i < 0 || i >= G.n) continue;
+    const anchor = k === 0 ? 'start' : k === ticks ? 'end' : 'middle';
+    g += `<text x="${gx(G, i)}" y="${H - 8}" text-anchor="${anchor}" font-size="11" fill="currentColor" fill-opacity="0.55">${(cfg.labels[i] || '').slice(0, 7)}</text>`;
+  }
+  for (const s of cfg.series) { // 선
+    let d = '', pen = false;
+    for (let i = 0; i < G.n; i++) {
+      const v = s.values[i];
+      if (v == null || !isFinite(v)) { pen = false; continue; }
+      d += (pen ? 'L' : 'M') + gx(G, i).toFixed(1) + ' ' + gy(G, v).toFixed(1);
+      pen = true;
+    }
+    if (d) g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.6" ${s.dash ? 'stroke-dasharray="5 4" stroke-width="1.2"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+  g += `<g class="hoverlayer"></g>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block" role="img">${g}</svg>`;
+}
+
+// 뷰 렌더 후 호출 — 각 차트에 실제 폭 기준 그리기·확대·호버를 붙인다.
+export function bindCharts(root) {
+  for (const box of root.querySelectorAll('.chartbox')) initBox(box);
+}
+
+function initBox(box) {
+  const id = box.dataset.chart;
+  const cfg = registry.get(id);
+  if (!cfg) return;
+  const scroll = box.querySelector('.chart-scroll');
+  const tip = box.querySelector('.chart-tip');
+  const zlabel = box.querySelector('.chart-zoom');
+
+  const hideTip = () => {
+    tip.hidden = true;
+    const hl = scroll.querySelector('.hoverlayer');
+    if (hl) hl.innerHTML = '';
+  };
+  const draw = () => {
+    const Cw = scroll.clientWidth || 320;
+    const W = Math.max(Cw, Math.round(Cw * cfg.zoom));
+    cfg.lastW = Cw;
+    scroll.innerHTML = svgFor(cfg, W, cfg.height);
+    scroll.scrollLeft = cfg.zoom > 1 ? scroll.scrollWidth : 0; // 확대 시 최신(오른쪽)부터
+    zlabel.textContent = cfg.zoom > 1.05 ? `×${cfg.zoom.toFixed(1)}` : '';
+    hideTip();
+  };
+
+  box.querySelector('[data-zoom=in]').addEventListener('click', () => { cfg.zoom = Math.min(cfg.zoom * 1.7, 8); draw(); });
+  box.querySelector('[data-zoom=reset]').addEventListener('click', () => { cfg.zoom = 1; draw(); });
+
+  const showAt = (clientX, clientY) => {
+    const svg = scroll.querySelector('svg');
+    const G = cfg.geom;
+    if (!svg || !G || G.n < 1) return;
+    const rect = svg.getBoundingClientRect();
+    const px = (clientX - rect.left) / rect.width * G.W;
+    let i = Math.round((px - G.padL) / Math.max(1, G.W - G.padL - G.padR) * (G.n - 1));
+    i = Math.max(0, Math.min(G.n - 1, i));
+    const cx = gx(G, i);
+    let ov = `<line x1="${cx.toFixed(1)}" y1="${G.padT}" x2="${cx.toFixed(1)}" y2="${G.H - G.padB}" stroke="currentColor" stroke-opacity="0.28"/>`;
+    const rows = [];
+    for (const s of cfg.series) {
+      const v = s.values[i];
+      const ok = v != null && isFinite(v);
+      if (ok) ov += `<circle cx="${cx.toFixed(1)}" cy="${gy(G, v).toFixed(1)}" r="3.4" fill="${s.color}" stroke="var(--card)" stroke-width="1.3"/>`;
+      rows.push(`<div class="tip-row"><span class="sw" style="background:${s.color}"></span><span class="tip-nm">${s.label}</span><span class="tip-v">${ok ? cfg.format(v) : '—'}</span></div>`);
+    }
+    const hl = svg.querySelector('.hoverlayer');
+    if (hl) hl.innerHTML = ov;
+    tip.innerHTML = `<div class="tip-date">${cfg.labels[i] || ''}</div>${rows.join('')}`;
+    tip.hidden = false;
+    const boxRect = box.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left = clientX - boxRect.left + 14;
+    let top = clientY - boxRect.top + 14;
+    if (left + tw > box.clientWidth) left = clientX - boxRect.left - tw - 14;
+    if (left < 2) left = 2;
+    if (top + th > box.clientHeight) top = box.clientHeight - th - 4;
+    if (top < 2) top = 2;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  };
+
+  scroll.addEventListener('mousemove', e => showAt(e.clientX, e.clientY));
+  scroll.addEventListener('mouseleave', hideTip);
+  // 터치: 톡 눌러 값 보기 (드래그 스크롤은 그대로)
+  scroll.addEventListener('touchstart', e => { if (e.touches[0]) showAt(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+
+  draw();
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => { if (scroll.clientWidth !== cfg.lastW) draw(); });
+    ro.observe(scroll);
+  }
 }
