@@ -229,8 +229,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .lock-back {
   position: fixed; inset: 0; z-index: 100; background: var(--bg);
   display: flex; align-items: center; justify-content: center; padding: 24px;
+  overflow-y: auto; /* 글귀가 길어 화면을 넘겨도 PIN 칸에 닿을 수 있게 */
 }
-.lock-box { width: 100%; max-width: 300px; text-align: center; }
+/* margin:auto + 부모 overflow — flex 가운데 정렬이 넘치는 내용을 잘라먹는 문제를 피하는 조합 */
+.lock-box { width: 100%; max-width: 300px; text-align: center; margin: auto; }
 .lock-logo { font-size: 40px; }
 .lock-title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-top: 6px; }
 .lock-sub { color: var(--sub); font-size: 13.5px; margin: 4px 0 18px; }
@@ -240,23 +242,28 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 }
 .lock-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .lock-err { color: var(--down); font-size: 13px; min-height: 20px; margin: 8px 0; }
+/* 잠금 화면 글귀 — PIN을 누르는 잠깐 눈에 걸리라고 두는 것이라 조용하게 */
+.lock-quote { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+.lock-quote .q-text {
+  font-size: 15px; line-height: 1.75; color: var(--sub);
+  /* 긴 글귀가 PIN 칸을 밀어내지 않게 — 잠금 화면은 읽는 자리가 아니라 지나가는 자리다 */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 7; overflow: hidden;
+}
+.lock-quote .q-text::before { content: '\201C'; color: var(--accent); margin-right: 2px; }
+.lock-quote .q-text::after { content: '\201D'; color: var(--accent); margin-left: 2px; }
+.lock-quote .q-src { color: var(--sub); font-size: 12px; opacity: 0.8; margin-top: 8px; }
 
 /* 토스트 */
 #toast-root { position: fixed; bottom: calc(var(--nav-h) + 18px); left: 0; right: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
 .toast { background: var(--ink); color: var(--bg); border-radius: 999px; padding: 8px 18px; font-size: 13.5px; opacity: 0.95; animation: toast-in 0.2s ease; }
 @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } }
 
-/* 글귀 */
-.quote-card { border-left: 3px solid var(--accent); }
+/* 글귀 — 잠금 화면(.lock-quote)과 글귀 서랍(#/quotes)에서 쓴다 */
 .q-text {
   font-family: "Batang", "바탕", "Noto Serif KR", Georgia, serif;
   font-size: 16.5px; line-height: 1.8; white-space: pre-wrap;
 }
-.quote-card .q-text::before { content: '\201C'; color: var(--accent); margin-right: 2px; }
-.quote-card .q-text::after { content: '\201D'; color: var(--accent); margin-left: 2px; }
-.q-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .q-src { color: var(--sub); font-size: 12.5px; }
-.q-tools { margin-left: auto; display: flex; gap: 6px; }
 
 /* 서한 */
 .letter-body { white-space: pre-wrap; font-size: 14.5px; line-height: 1.75; }

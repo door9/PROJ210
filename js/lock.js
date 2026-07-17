@@ -2,6 +2,7 @@
 // 주의: 데이터는 브라우저 localStorage에 있으므로 기기에 접근 가능한 사람으로부터 완벽히
 // 막아주지는 못한다(기기 잠금 화면 수준의 가벼운 보호). UI 접근을 가리는 용도.
 import { state, saveNow } from './core.js';
+import { esc } from './util.js';
 
 const SALT = 'proj210.pin.v1';
 
@@ -24,6 +25,19 @@ export function clearPin() {
   saveNow();
 }
 
+// 글귀 서랍에서 랜덤 한 문장. 잠금 화면이라 링크·버튼 없이 읽기 전용
+// (앱이 잠겨 있어 서랍으로 갈 수도, 다시 그릴 수도 없다).
+function quoteHtml() {
+  const qs = state.quotes || [];
+  if (!qs.length) return '';
+  const q = qs[Math.floor(Math.random() * qs.length)];
+  return `
+    <div class="lock-quote">
+      <div class="q-text">${esc(q.text)}</div>
+      ${q.source ? `<div class="q-src">— ${esc(q.source)}</div>` : ''}
+    </div>`;
+}
+
 // 앱 시작 시 호출. PIN이 맞을 때까지 화면을 가리고 대기.
 export function showLock() {
   return new Promise(resolve => {
@@ -37,6 +51,7 @@ export function showLock() {
           <input id="lock-pin" class="lock-input" type="password" inputmode="numeric" autocomplete="off" maxlength="12">
           <div id="lock-err" class="lock-err"></div>
           <button id="lock-ok" class="btn primary" style="width:100%;">확인</button>
+          ${quoteHtml()}
         </div>
       </div>`;
     const input = root.querySelector('#lock-pin');

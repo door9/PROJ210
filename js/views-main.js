@@ -8,24 +8,6 @@ import * as Dbx from './dropbox.js';
 import * as Lock from './lock.js';
 
 // ---------- 홈 ----------
-// 글귀 서랍에서 랜덤 한 문장
-function quoteCard() {
-  const qs = state.quotes || [];
-  if (!qs.length) return '';
-  const q = qs[Math.floor(Math.random() * qs.length)];
-  return `
-    <div class="card quote-card">
-      <div class="q-text">${esc(q.text)}</div>
-      <div class="q-foot">
-        <span class="q-src">${q.source ? '— ' + esc(q.source) : ''}</span>
-        <span class="q-tools">
-          <button class="btn small" data-act="requote" title="다른 글귀 보기">↻</button>
-          <a class="btn small" href="#/quotes">서랍</a>
-        </span>
-      </div>
-    </div>`;
-}
-
 // 현금 잔액 입력 — 홈 표의 현금 행에서 바로 연다. 설정의 '현금 잔액' 카드와 같은 일을 하며
 // 저장은 Store.setCash로 공용(입력 이력·삭제는 설정에서).
 export function openCashModal(focusCur = 'KRW') {
@@ -77,7 +59,6 @@ function vHome() {
     return `
       <div class="view-title">${esc(state.settings.fundName || 'PROJ210')}</div>
       <p class="view-desc">나는 이 펀드의 매니저이고, 유일한 고객도 나다.</p>
-      ${quoteCard()}
       <div class="card">
         <h3>아직 기록이 없습니다</h3>
         <p class="small muted" style="margin:6px 0 0;">
@@ -151,7 +132,6 @@ function vHome() {
   ].filter(Boolean).join(' · ');
 
   return `
-    ${quoteCard()}
     ${alerts.join('')}
     <div class="card hero">
       <div class="row"><span class="muted small">보유 평가액 (${heroNote})</span></div>
@@ -196,7 +176,6 @@ function vHome() {
 vHome.bind_ = (root) => {
   root.querySelectorAll('.row-link[data-sym]').forEach(tr => tr.addEventListener('click', () => go('symbol/' + encodeURIComponent(tr.dataset.sym))));
   root.querySelectorAll('.row-link[data-cash]').forEach(tr => tr.addEventListener('click', () => openCashModal(tr.dataset.cash)));
-  root.querySelector('[data-act=requote]')?.addEventListener('click', render);
   root.querySelector('[data-act=first-trade]')?.addEventListener('click', () => openTradeForm('buy'));
   root.querySelector('[data-act=buy]')?.addEventListener('click', () => openTradeForm('buy'));
   root.querySelector('[data-act=sell]')?.addEventListener('click', () => openTradeForm('sell'));

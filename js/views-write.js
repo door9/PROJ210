@@ -289,7 +289,8 @@ function vQuotes() {
 
   return `
     <div class="view-title">글귀 서랍</div>
-    <p class="view-desc">책이나 자료에서 다시 꺼내 읽고 싶은 문장을 모아두면, 홈 화면에서 하나씩 랜덤으로 만나게 됩니다.</p>
+    <p class="view-desc">책이나 자료에서 다시 꺼내 읽고 싶은 문장을 모아두면, 앱을 열 때 PIN 화면에서 하나씩 랜덤으로 만나게 됩니다.</p>
+    ${Lock.hasPin() ? '' : `<div class="warnbox">앱 잠금(PIN)이 설정돼 있지 않아 글귀를 보여줄 화면이 없습니다 — <a href="#/settings">설정</a>에서 PIN을 설정하면 앱을 열 때마다 한 문장씩 만나게 됩니다.</div>`}
     <div class="card">
       <h3>새 글귀</h3>
       <form id="quote-form">
@@ -615,7 +616,7 @@ function vMore() {
     ['worlds', '평행우주', '지수만 샀다면·예금만 했다면 지금 얼마인가'],
     ['actions', '개입 점수', '매도·물타기 하나하나 채점'],
     ['cost', '투자 비용', '빌린 돈 이자 — 매달·누적·실질 손익'],
-    ['quotes', '글귀 서랍', '책에서 모은 문장, 홈에서 랜덤으로'],
+    ['quotes', '글귀 서랍', '책에서 모은 문장, PIN 화면에서 랜덤으로'],
     ['letters', '주주 서한', '분기마다 나에게 쓰는 운용보고서'],
     ['rules', '투자 헌법', '원칙 자동 감시와 원칙 검증'],
     ['ai', 'AI 복기', '기록 전체를 Claude에게 심문받기'],
