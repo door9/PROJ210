@@ -184,6 +184,17 @@ registerView('home', vHome);
 function tradeItemHtml(t, r) {
   const cur = P.currencyOf(t.symbol);
   const amt = t.price * t.qty;
+  // 메타 칩(매도이유·실현·보유·감정 등) — 있을 때만 한 줄 추가한다. 버튼은 제목줄로 올려
+  // 메모 없는 매매가 불필요하게 세 줄로 늘어나지 않게 한다(빈 줄 = 행 높이 낭비).
+  const chips = [];
+  if (t.side === 'buy') {
+    if (t.sellPlan) chips.push(`<span title="${esc(t.sellPlan)}">매도 조건 있음</span>`);
+  } else {
+    if (t.sellReasonType) chips.push(`<span class="tag">${esc(t.sellReasonType)}</span>`);
+    if (r && r.ret != null) chips.push(`<span class="${pctClass(r.ret)}">실현 ${fmtPct(r.ret)}</span>`);
+    if (r && r.holdDays != null) chips.push(`<span>보유 ${Math.round(r.holdDays)}일</span>`);
+  }
+  for (const e of (t.emotions || [])) chips.push(`<span class="tag">${esc(e)}</span>`);
   return `
     <div class="trade-item" data-id="${t.id}">
       <div class="trade-head">
@@ -191,23 +202,14 @@ function tradeItemHtml(t, r) {
         <span class="nm">${esc(t.name || t.symbol)}</span>
         <span class="dt">${t.date}</span>
         ${t.sample ? '<span class="tag warn">예시</span>' : ''}
-        <span class="amt">${fmtQty(t.qty)}주 @ ${fmtMoney(t.price, cur)}<br><span class="muted small">${fmtMoney(amt, cur)}</span></span>
-      </div>
-      ${t.reason ? `<div class="trade-body">${esc(t.reason)}</div>` : ''}
-      <div class="trade-meta">
-        ${t.side === 'buy' ? `
-          ${t.confidence != null ? `<span>확신도 ${t.confidence}%</span>` : ''}
-          ${t.planMonths ? `<span>계획 ${t.planMonths}개월</span>` : ''}
-          ${t.sellPlan ? `<span title="${esc(t.sellPlan)}">매도 조건 있음</span>` : ''}` : `
-          ${t.sellReasonType ? `<span class="tag">${esc(t.sellReasonType)}</span>` : ''}
-          ${r && r.ret != null ? `<span class="${pctClass(r.ret)}">실현 ${fmtPct(r.ret)}</span>` : ''}
-          ${r && r.holdDays != null ? `<span>보유 ${Math.round(r.holdDays)}일</span>` : ''}`}
-        ${(t.emotions || []).map(e => `<span class="tag">${esc(e)}</span>`).join('')}
-        <span style="margin-left:auto;">
+        ${chips.length ? `<span class="chips">${chips.join('')}</span>` : ''}
+        <span class="amt">${fmtQty(t.qty)}주 @ ${fmtMoney(t.price, cur)} <span class="muted">· ${fmtMoney(amt, cur)}</span></span>
+        <span class="acts">
           <button class="btn small" data-edit="${t.id}">수정</button>
           <button class="btn small danger" data-del="${t.id}">삭제</button>
         </span>
       </div>
+      ${t.reason ? `<div class="trade-body">${esc(t.reason)}</div>` : ''}
     </div>`;
 }
 function bindTradeItems(root) {

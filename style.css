@@ -194,14 +194,17 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 }
 
 /* 거래 타임라인 */
-.trade-item { padding: 12px 2px; border-bottom: 1px solid var(--line); }
+.trade-item { padding: 8px 2px; border-bottom: 1px solid var(--line); }
 .trade-item:last-child { border-bottom: none; }
-.trade-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.trade-head { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
 .trade-head .nm { font-weight: 700; }
 .trade-head .dt { color: var(--sub); font-size: 12.5px; }
-.trade-head .amt { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.trade-body { color: var(--sub); font-size: 13px; margin-top: 4px; white-space: pre-wrap; }
-.trade-meta { font-size: 12px; color: var(--sub); margin-top: 5px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.trade-head .amt { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 13.5px; }
+.trade-head .acts { display: flex; gap: 6px; flex: none; }
+/* 실현·보유·감정 등 칩을 제목줄에 인라인으로 — 메모만 아래로 늘어나게 한다 */
+.trade-head .chips { display: inline-flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12px; color: var(--sub); }
+.trade-body { color: var(--sub); font-size: 13px; margin-top: 5px; white-space: pre-wrap; }
+.trade-meta { font-size: 12px; color: var(--sub); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
 
 /* 경고 박스 */
 .warnbox { background: var(--warn-bg); color: var(--warn-ink); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin: 8px 0; }
