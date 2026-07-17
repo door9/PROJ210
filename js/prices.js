@@ -117,6 +117,39 @@ export const has = sym => map.has(sym);
 export const symbols = () => [...map.keys()];
 export const updatedAt = () => meta?.updatedAt ? new Date(meta.updatedAt * 1000) : null;
 
+// 시장 구분: 한국(.KS/.KQ) vs 미국(그 외). 지수(^)·환율(KRW=X)은 호출 전에 걸러 쓴다.
+function marketOf(sym) { return /\.(KS|KQ)$/.test(sym) ? 'kr' : 'us'; }
+
+const CLOSE_FMT = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hour12: false,
+});
+
+// 시세(종가) 기준 시각 — 수집 시각(meta.updatedAt)이 아니라 '종가가 찍히는 정해진 시각'.
+// 종가는 시장별로 마감 시각이 고정돼 있으므로 봉 날짜 + 고정 마감시각으로 계산한다.
+//   - 한국: 그 거래일 15:30 KST
+//   - 미국: 그 거래일 16:00 ET → 파일의 gmtoffset로 서머타임 판별해 KST로 (05:00/06:00 다음날)
+// 반환: { kr:'YYYY-MM-DD HH:MM', us:'…' } — 해당 시장 종목이 없으면 그 키는 없다.
+export function closeStamps() {
+  const latest = {}; // 'kr'|'us' -> {date, gmtoffset}
+  for (const [sym, d] of map) {
+    if (sym === 'KRW=X' || sym.startsWith('^')) continue; // 환율·지수는 마감시각이 달라 제외
+    if (!d.closes?.length) continue;
+    const date = d.closes[d.closes.length - 1][0];
+    const mk = marketOf(sym);
+    if (!latest[mk] || date > latest[mk].date) latest[mk] = { date, gmtoffset: d.gmtoffset };
+  }
+  const out = {};
+  if (latest.kr) out.kr = `${latest.kr.date} 15:30`; // 한국 종가는 15:30 KST (거래일 = KST 날짜)
+  if (latest.us) {
+    // 미국 16:00 ET를 UTC로: 'date 16:00'을 UTC로 읽은 뒤 gmtoffset만큼 되돌린다
+    const off = latest.us.gmtoffset ?? -14400; // 미상이면 서머타임(-4h) 가정
+    const utcMs = Date.parse(`${latest.us.date}T16:00:00Z`) - off * 1000;
+    out.us = CLOSE_FMT.format(new Date(utcMs)).replace('T', ' ');
+  }
+  return out;
+}
+
 export function info(sym) {
   const d = map.get(sym);
   return d ? { name: d.name, currency: d.currency } : null;

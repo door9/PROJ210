@@ -242,18 +242,16 @@ export async function triggerRefresh() {
   }
 }
 
-// 라벨이 (KST)라고 말하므로 기기 시간대와 상관없이 실제 한국 시각으로 찍는다
-// (sv-SE 로캘이 "2026-07-17 06:10" 꼴을 준다).
-const KST_FMT = new Intl.DateTimeFormat('sv-SE', {
-  timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
-  hour: '2-digit', minute: '2-digit', hour12: false,
-});
-
+// 시세는 종가 기준이라 마감 시각이 정해져 있다(한국 15:30, 미국 16:00 ET=서머타임이면 05:00 KST).
+// 그래서 '수집한 시각'이 아니라 시장별 '종가 기준 시각'을 보여준다(prices.closeStamps).
 export function refreshPriceStatus() {
   const el = document.getElementById('price-status');
-  const u = P.updatedAt();
-  if (!u) { el.textContent = '시세 없음'; return; }
-  el.innerHTML = `시세 기준 시간(KST)<br>${KST_FMT.format(u).replace('T', ' ')}`;
+  const cs = P.closeStamps();
+  const lines = [];
+  if (cs.kr) lines.push(`한국 ${cs.kr}`);
+  if (cs.us) lines.push(`미국 ${cs.us}`);
+  if (!lines.length) { el.textContent = '시세 없음'; return; }
+  el.innerHTML = `시세 기준 시각(KST)<br>${lines.join('<br>')}`;
 }
 
 // 상단바의 시세 갱신 버튼 — 어느 화면에서든 항상 같은 자리에 있다.
