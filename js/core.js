@@ -150,13 +150,18 @@ export async function triggerRefresh() {
   }
 }
 
+// 라벨이 (KST)라고 말하므로 기기 시간대와 상관없이 실제 한국 시각으로 찍는다
+// (sv-SE 로캘이 "2026-07-17 06:10" 꼴을 준다).
+const KST_FMT = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hour12: false,
+});
+
 export function refreshPriceStatus() {
   const el = document.getElementById('price-status');
   const u = P.updatedAt();
   if (!u) { el.textContent = '시세 없음'; return; }
-  const p2 = n => String(n).padStart(2, '0');
-  const stamp = `${u.getFullYear()}-${p2(u.getMonth() + 1)}-${p2(u.getDate())} ${p2(u.getHours())}:${p2(u.getMinutes())}`;
-  el.innerHTML = `시세 기준 시간<br>${stamp}`;
+  el.innerHTML = `시세 기준 시간(KST)<br>${KST_FMT.format(u).replace('T', ' ')}`;
 }
 
 // 상단바의 시세 갱신 버튼 — 어느 화면에서든 항상 같은 자리에 있다.

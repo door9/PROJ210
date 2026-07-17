@@ -103,87 +103,14 @@ export async function registerTicker(cfg, symbol) {
   try { await dispatchRefresh(cfg); } catch { /* cron이 처리 */ }
 }
 
-// ---- 거래소 휴장일 캘린더 (종일 휴장만. 반일 조기폐장은 반영하지 않음) ----
-// 규칙만으로 계산 불가라 연도별로 직접 관리한다(한국: 음력 설날·추석·대체·임시공휴일 / 미국: 부활절 연동 성금요일).
-// **매년 다음 해 휴장일을 추가할 것.** (마지막 갱신 2026-07, 2027 고정 휴장일까지 수록)
-// 목록에 없는 날짜는 정상 거래일로 간주(fail-open): 빠뜨린 휴장일엔 헛갱신이 갈 뿐 무해하지만,
-// 실제 거래일을 잘못 넣으면 그날 실시간 갱신이 막히므로 확실한 날짜만 넣는다.
-const HOLIDAYS_KR = new Set([
-  // 2025
-  '2025-01-01', '2025-01-27', '2025-01-28', '2025-01-29', '2025-01-30', '2025-03-03',
-  '2025-05-01', '2025-05-05', '2025-05-06', '2025-06-03', '2025-06-06', '2025-08-15',
-  '2025-10-03', '2025-10-06', '2025-10-07', '2025-10-08', '2025-10-09', '2025-10-10', '2025-12-25', '2025-12-31',
-  // 2026
-  '2026-01-01', '2026-02-16', '2026-02-17', '2026-02-18', '2026-03-02', '2026-05-01', '2026-05-05', '2026-05-25',
-  '2026-06-03', '2026-08-17', '2026-09-24', '2026-09-25', '2026-09-28', '2026-10-05', '2026-10-09', '2026-12-25', '2026-12-31',
-  // 2027 — 음력(설날·부처님오신날·추석)은 확정 후 보완, 우선 고정 휴장일·대체공휴일만
-  '2027-01-01', '2027-03-01', '2027-05-05', '2027-08-16', '2027-10-04', '2027-10-11', '2027-12-31',
-]);
-const HOLIDAYS_US = new Set([
-  // 2025
-  '2025-01-01', '2025-01-20', '2025-02-17', '2025-04-18', '2025-05-26', '2025-06-19', '2025-07-04', '2025-09-01', '2025-11-27', '2025-12-25',
-  // 2026
-  '2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25', '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25',
-  // 2027
-  '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31', '2027-06-18', '2027-07-05', '2027-09-06', '2027-11-25', '2027-12-24',
-]);
-const HOLIDAYS = { kr: HOLIDAYS_KR, us: HOLIDAYS_US };
-
-// 지정 시장의 특정 날짜(YYYY-MM-DD, 그 시장 현지 날짜)가 휴장일인지 — 검증·재사용용
-export function isMarketHoliday(market, dateStr) { return !!HOLIDAYS[market]?.has(dateStr); }
-
-// ---- 정규장 시간 판정 (Intl 타임존 변환 — DST 자동 처리) ----
-function nowInZone(timeZone) {
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', {
-      timeZone, hour12: false, weekday: 'short',
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-    }).formatToParts(new Date()).map(x => [x.type, x.value])
-  );
-  let hour = parseInt(p.hour, 10);
-  if (hour === 24) hour = 0; // hour12:false 환경에서 자정을 '24'로 주는 경우 보정
-  return {
-    weekday: p.weekday,
-    date: `${p.year}-${p.month}-${p.day}`, // 그 시장 현지 날짜
-    minutesOfDay: hour * 60 + parseInt(p.minute, 10),
-  };
-}
-
-function isOpen(timeZone, openMin, closeMin, holidays) {
-  const { weekday, minutesOfDay, date } = nowInZone(timeZone);
-  if (weekday === 'Sat' || weekday === 'Sun') return false;
-  if (holidays.has(date)) return false; // 공휴일 휴장
-  return minutesOfDay >= openMin && minutesOfDay <= closeMin;
-}
-
-// 한국(09:00–15:30 KST)·미국(9:30–16:00 ET) 정규장 개장 여부. 주말·공휴일 휴장 반영.
-export function marketStatus() {
-  return {
-    kr: isOpen('Asia/Seoul', 9 * 60, 15 * 60 + 30, HOLIDAYS_KR),
-    us: isOpen('America/New_York', 9 * 60 + 30, 16 * 60, HOLIDAYS_US),
-  };
-}
-
-const K_LAST_TRIGGER = 'onefund.lastPriceTrigger';
-const REFRESH_MIN_GAP_MS = 2 * 60 * 1000; // 같은 기기에서 최소 2분 간격
-
-// 사용자가 버튼으로 직접 요청하는 즉시 갱신 — 장 시간·쓰로틀 무시하고 무조건 워크플로 실행.
+// 시세 갱신은 앱이 아니라 저장소의 크론이 한다 — 한국·미국이 각각 마감한 직후 하루 한 번씩,
+// 휴장일은 건너뛰고(시장 판정·휴장일 캘린더는 PROJ210-data의 scripts/fetch_prices.py에 있다).
+// 앱을 열 때 갱신을 요청하던 로직은 제거했다: 실시간 시세가 필요하지 않은데 열 때마다
+// Actions를 돌려 한도를 갉아먹었고, 기기별 쓰로틀이라 PC·폰을 같이 열면 중복 실행됐다.
+// 사용자가 지금 당장 받고 싶으면 상단바의 갱신 버튼(forceRefresh)을 누르면 된다.
 export async function forceRefresh(cfg) {
   if (!ghReady(cfg)) throw new Error('시세 저장소가 설정되지 않았습니다');
   await dispatchRefresh(cfg);
-  localStorage.setItem(K_LAST_TRIGGER, String(Date.now()));
-}
-
-// 앱을 열 때 호출: 정규장이 열린 시장이 하나라도 있으면(그리고 최근에 요청한 적 없으면) 즉시 갱신 트리거.
-// 두 시장 다 마감 상태면 이미 확정 종가를 보유하고 있으므로 트리거하지 않음.
-export async function maybeRefreshLive(cfg) {
-  if (!ghReady(cfg)) return false;
-  const { kr, us } = marketStatus();
-  if (!kr && !us) return false;
-  const last = parseInt(localStorage.getItem(K_LAST_TRIGGER) || '0', 10);
-  if (Date.now() - last < REFRESH_MIN_GAP_MS) return false;
-  localStorage.setItem(K_LAST_TRIGGER, String(Date.now()));
-  try { await dispatchRefresh(cfg); return true; } catch { return false; }
 }
 
 export const has = sym => map.has(sym);

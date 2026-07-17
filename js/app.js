@@ -37,18 +37,9 @@ async function init() {
   render();
   window.addEventListener('hashchange', render);
   if (justConnected) toast('Dropbox에 연결됐습니다. 이제 기기 간 동기화됩니다.');
-
-  // 정규장이 열린 시장이 있으면 백그라운드로 최신 시세 갱신을 요청하고,
-  // 워크플로가 끝날 즈음(약 40초 뒤) 조용히 다시 불러와 화면을 갱신한다.
-  // 화면은 즉시 기존 데이터로 그려지므로 이 요청이 첫 로딩을 지연시키지 않는다.
-  P.maybeRefreshLive(state.settings).then(triggered => {
-    if (!triggered) return;
-    setTimeout(async () => {
-      await P.load(state.settings);
-      refreshPriceStatus();
-      render();
-    }, 40000);
-  }).catch(() => {});
+  // 시세 갱신은 앱이 요청하지 않는다 — 저장소 크론이 한국·미국 마감 직후 하루 한 번씩
+  // 미리 받아 두므로, 앱은 이미 갱신된 파일을 읽기만 하면 된다(기다릴 일이 없다).
+  // 지금 당장 받고 싶으면 상단바의 갱신 버튼.
 }
 
 // 저장된 데이터의 종목명을 시세의 자동 이름(한국=한글/미국=영문)으로 맞춘다.

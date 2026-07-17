@@ -87,6 +87,9 @@ function migrate(state) {
   }
   if (!state.settings.cashLog) state.settings.cashLog = [];
 
+  // 앱을 열 때 시세 갱신을 요청하던 로직이 쓰던 키 — 그 기능이 없어졌으니 정리
+  try { localStorage.removeItem('onefund.lastPriceTrigger'); } catch { /* 무시 */ }
+
   // 기기별로 저장하던 PIN을 동기화되는 settings로 이전
   try {
     const legacyPin = localStorage.getItem('onefund.pinHash');
