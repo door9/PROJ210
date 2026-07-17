@@ -130,16 +130,83 @@ export function renderIfIdle() {
   return true;
 }
 
+let lastRoute = 'home';   // 리사이즈로 데스크톱 메뉴를 다시 배치할 때 쓴다
 function renderNav(route) {
+  lastRoute = route;
   const bn = document.getElementById('bottom-nav');
   bn.innerHTML = NAV.map(n => {
     const active = route === n.id || (n.id === 'more' && !NAV.some(x => x.id === route));
     return `<a href="#/${n.id}" class="${active ? 'active' : ''}"><span class="ico">${n.ico}</span>${n.label}</a>`;
   }).join('');
-  const dn = document.getElementById('desktop-nav');
-  dn.innerHTML = NAV_DESKTOP.map(([id, label]) =>
-    `<a href="#/${id}" class="${route === id ? 'active' : ''}">${label}</a>`).join('');
+  layoutDesktopNav(route);
   document.getElementById('fund-name').textContent = state.settings.fundName || 'PROJ210';
+}
+
+// 데스크톱 메뉴: 한 줄에 들어가는 만큼만 펴고, 넘치는 항목은 끝의 '더보기' 아래로 접는다.
+// 앞으로 메뉴가 더 늘어도 상단바가 한 줄을 넘지 않게 하기 위한 것(우선순위+ 오버플로).
+// 한 번 그린 뒤 실제 폭을 재서 접을 개수를 정하므로, 글꼴·창 너비가 무엇이든 스스로 맞춘다.
+const navLink = (id, label, route) => `<a href="#/${id}" data-nav class="${route === id ? 'active' : ''}">${label}</a>`;
+function layoutDesktopNav(route) {
+  const dn = document.getElementById('desktop-nav');
+  if (!dn || getComputedStyle(dn).display === 'none') return; // 모바일에선 하단 탭을 쓰므로 건너뛴다
+
+  const inner = dn.closest('.topbar-inner');
+  const gap = parseFloat(getComputedStyle(inner).columnGap || getComputedStyle(inner).gap) || 18;
+
+  // 메뉴가 쓸 수 있는 폭: 메뉴를 비운 상태에서 '메뉴 시작점 ~ 갱신버튼 시작점' 거리를 잰다.
+  // 이렇게 해야 정확하다 — 메뉴를 다 펼친 채로 옆 요소(펀드명·기준시간)를 재면, 상단바가
+  // 넘쳐 flex-shrink로 그 요소들이 쭈그러들어 폭이 실제보다 작게 나오고, 여유를 과대평가한다.
+  dn.innerHTML = '';
+  const refresh = document.getElementById('price-refresh');
+  const avail = refresh.getBoundingClientRect().left - dn.getBoundingClientRect().left - gap;
+
+  // 1차: 전부 펼쳐 각 항목의 자연 폭을 잰다 (a는 flex:none이라 넘쳐도 안 쭈그러든다)
+  dn.innerHTML = NAV_DESKTOP.map(([id, label]) => navLink(id, label, route)).join('')
+    + `<div class="nav-more"><button type="button" class="nav-more-btn">더보기 ▾</button></div>`;
+  const widths = [...dn.querySelectorAll('a[data-nav]')].map(a => a.offsetWidth);
+  const moreW = dn.querySelector('.nav-more').offsetWidth;
+
+  const navGap = parseFloat(getComputedStyle(dn).columnGap || getComputedStyle(dn).gap) || 2;
+  const SAFE = 6; // 활성화로 살짝 굵어질 여유
+  const totalAll = widths.reduce((s, w) => s + w, 0) + navGap * (widths.length - 1);
+
+  let visible = NAV_DESKTOP.length;
+  if (totalAll > avail) {
+    let sum = 0, k = 0;
+    for (let i = 0; i < widths.length; i++) {
+      const add = widths[i] + (k > 0 ? navGap : 0);
+      if (sum + add + navGap + moreW + SAFE <= avail) { sum += add; k++; } else break;
+    }
+    visible = k;
+  }
+
+  // 2차: 보이는 항목 + (넘치면) 더보기 버튼·드롭다운으로 다시 그린다
+  const shown = NAV_DESKTOP.slice(0, visible);
+  const hidden = NAV_DESKTOP.slice(visible);
+  let html = shown.map(([id, label]) => navLink(id, label, route)).join('');
+  if (hidden.length) {
+    const overflowActive = hidden.some(([id]) => id === route);
+    html += `<div class="nav-more${overflowActive ? ' active' : ''}">
+      <button type="button" class="nav-more-btn" aria-haspopup="true" aria-expanded="false">더보기 ▾</button>
+      <div class="nav-more-panel" hidden>
+        ${hidden.map(([id, label]) => navLink(id, label, route)).join('')}
+      </div>
+    </div>`;
+  }
+  dn.innerHTML = html;
+
+  const btn = dn.querySelector('.nav-more-btn');
+  if (btn) {
+    const panel = dn.querySelector('.nav-more-panel');
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = panel.hasAttribute('hidden');
+      if (open) { panel.removeAttribute('hidden'); btn.setAttribute('aria-expanded', 'true'); }
+      else { panel.setAttribute('hidden', ''); btn.setAttribute('aria-expanded', 'false'); }
+    });
+    // 항목을 고르면 라우팅되며 어차피 다시 그려지지만, 즉시 닫아 깜빡임을 없앤다
+    panel.querySelectorAll('a').forEach(a => a.addEventListener('click', () => panel.setAttribute('hidden', '')));
+  }
 }
 
 // 사용자가 버튼으로 요청하는 즉시 시세 갱신 (상단바·설정 공용)
@@ -193,4 +260,17 @@ export function refreshPriceStatus() {
 export function initTopbar() {
   const btn = document.getElementById('price-refresh');
   if (btn) btn.addEventListener('click', triggerRefresh);
+
+  // 창 너비가 바뀌면 데스크톱 메뉴의 접힘 개수를 다시 계산 (디바운스)
+  let t = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(t);
+    t = setTimeout(() => layoutDesktopNav(lastRoute), 120);
+  });
+  // 바깥을 누르면 더보기 드롭다운을 닫는다
+  document.addEventListener('click', e => {
+    if (e.target.closest('.nav-more')) return;
+    const p = document.querySelector('.nav-more-panel:not([hidden])');
+    if (p) { p.setAttribute('hidden', ''); p.parentElement.querySelector('.nav-more-btn')?.setAttribute('aria-expanded', 'false'); }
+  });
 }

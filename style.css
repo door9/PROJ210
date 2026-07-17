@@ -44,7 +44,7 @@ a { color: var(--accent); }
   max-width: 980px; margin: 0 auto; padding: 10px 16px;
   display: flex; align-items: center; gap: 18px;
 }
-#fund-name { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+#fund-name { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: -0.01em; flex: none; white-space: nowrap; }
 /* 시세 갱신 버튼 — 상단바 오른쪽, 기준 시간 바로 왼쪽. 아이콘만(글자 없음) */
 #price-refresh {
   margin-left: auto; flex: none;
@@ -61,12 +61,34 @@ a { color: var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 #price-status { flex: none; font-size: 11.5px; opacity: 0.75; text-align: right; line-height: 1.3; }
-#desktop-nav { display: none; gap: 2px; }
+#desktop-nav { display: none; gap: 2px; flex: none; }
 #desktop-nav a {
   color: #fff; opacity: 0.75; text-decoration: none; font-size: 14px;
   padding: 6px 10px; border-radius: 8px;
+  flex: none; white-space: nowrap; /* 폭 측정이 정확하도록 넘쳐도 쭈그러들지 않게 */
 }
 #desktop-nav a.active { opacity: 1; background: rgba(255,255,255,0.14); font-weight: 600; }
+/* 넘치는 메뉴를 담는 '더보기' — 버튼은 상단바(녹색) 위, 드롭다운은 본문 위에 뜬다 */
+#desktop-nav .nav-more { position: relative; display: inline-flex; }
+#desktop-nav .nav-more-btn {
+  color: #fff; opacity: 0.75; background: none; border: none; cursor: pointer;
+  font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px;
+}
+#desktop-nav .nav-more:hover .nav-more-btn { opacity: 1; }
+#desktop-nav .nav-more.active .nav-more-btn { opacity: 1; background: rgba(255,255,255,0.14); font-weight: 600; }
+#desktop-nav .nav-more-panel {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 6px; min-width: 152px; display: flex; flex-direction: column; gap: 2px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16); z-index: 30;
+}
+#desktop-nav .nav-more-panel[hidden] { display: none; }
+#desktop-nav .nav-more-panel a {
+  color: var(--ink); opacity: 1; text-decoration: none; font-size: 14px;
+  padding: 8px 12px; border-radius: 8px; white-space: nowrap;
+}
+#desktop-nav .nav-more-panel a:hover { background: var(--accent-soft); }
+#desktop-nav .nav-more-panel a.active { background: var(--accent-soft); color: var(--accent); opacity: 1; font-weight: 600; }
 @media (min-width: 760px) {
   #desktop-nav { display: flex; }
   #bottom-nav { display: none !important; }
