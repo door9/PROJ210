@@ -228,11 +228,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 /* 앱 잠금 (PIN) */
 .lock-back {
   position: fixed; inset: 0; z-index: 100; background: var(--bg);
-  display: flex; align-items: center; justify-content: center; padding: 24px;
-  overflow-y: auto; /* 글귀가 길어 화면을 넘겨도 PIN 칸에 닿을 수 있게 */
+  /* 위 정렬 — 글귀가 길든 없든 PIN 칸이 늘 같은 자리에 있도록. 가운데 정렬이면 글귀 길이에
+     따라 입력칸이 위아래로 움직인다. flex-start라 넘치는 내용도 잘리지 않고 아래로 흐른다. */
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: clamp(40px, 11vh, 96px) 24px 24px;
+  overflow-y: auto;
 }
-/* margin:auto + 부모 overflow — flex 가운데 정렬이 넘치는 내용을 잘라먹는 문제를 피하는 조합 */
-.lock-box { width: 100%; max-width: 300px; text-align: center; margin: auto; }
+.lock-box { width: 100%; max-width: 300px; text-align: center; margin: 0 auto; }
 /* 자물쇠 — 이모지(🔒)는 기기마다 제 색으로 그려져 앱 톤과 따로 논다. 나머지 아이콘과 같은 선 아이콘으로 */
 .lock-logo { color: var(--sub); display: flex; justify-content: center; }
 .lock-logo svg { width: 22px; height: 22px; display: block; }
@@ -246,11 +248,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .lock-err { color: var(--down); font-size: 13px; min-height: 20px; margin: 8px 0; }
 /* 잠금 화면 글귀 — PIN을 누르는 잠깐 눈에 걸리라고 두는 것이라 조용하게 */
 .lock-quote { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
-.lock-quote .q-text {
-  font-size: 15px; line-height: 1.75; color: var(--sub);
-  /* 긴 글귀가 PIN 칸을 밀어내지 않게 — 잠금 화면은 읽는 자리가 아니라 지나가는 자리다 */
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 7; overflow: hidden;
-}
+/* PIN 칸이 위에 고정된 뒤로는 글귀가 길어도 아래로 흐를 뿐이라, 잘라내지 않고 다 보여준다 */
+.lock-quote .q-text { font-size: 15px; line-height: 1.75; color: var(--sub); }
 .lock-quote .q-text::before { content: '\201C'; color: var(--accent); margin-right: 2px; }
 .lock-quote .q-text::after { content: '\201D'; color: var(--accent); margin-left: 2px; }
 .lock-quote .q-src { color: var(--sub); font-size: 12px; opacity: 0.8; margin-top: 8px; }
