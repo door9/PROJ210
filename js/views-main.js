@@ -64,11 +64,10 @@ function vHome() {
         <p class="small muted" style="margin:6px 0 0;">
           이 앱은 매매의 <b>결과</b>가 아니라 <b>판단</b>을 기록하고, 시간이 지난 뒤 그 판단을 채점합니다.<br><br>
           · <b>평행우주</b> — 지수만 샀다면·예금만 했다면 지금 얼마인가<br>
-          · <b>개입 점수</b> — 내 매도·물타기가 돈을 벌었나 까먹었나<br>
+          · <b>회상</b> — 판 뒤 그 주식은 어떻게 됐나, 물타기는 지수보다 나았나<br>
           · <b>홀딩 일지</b> — 흔들린 순간이 신호였나 소음이었나<br>
-          · <b>투자 헌법</b> — 내 원칙을 어겼는지 자동 감시, 원칙 자체도 검증<br>
           · <b>주주 서한</b> — 분기마다 나에게 쓰는 운용보고서<br>
-          · <b>AI 복기</b> — 기록 전체를 넘겨 심문받기
+          · <b>복기</b> — 기록 전체를 넘겨 심문받기
         </p>
         <div class="btn-row">
           <button class="btn primary" data-act="first-trade">첫 매매 기록하기</button>
@@ -88,8 +87,6 @@ function vHome() {
   const q = quarterOf(todayStr());
   if (!state.letters.some(l => l.period === q)) alerts.push(`<div class="notice">이번 분기(${q}) <a href="#/letters">주주 서한</a>을 아직 쓰지 않았습니다.</div>`);
   if (state.pendingSymbols.length) alerts.push(`<div class="warnbox">시세 미등록 종목: ${state.pendingSymbols.map(esc).join(', ')} — <a href="#/settings">설정</a>에서 등록 방법 확인</div>`);
-  const vio = E.violations(state);
-  if (vio.length) alerts.push(`<div class="warnbox">투자 헌법 위반 ${vio.length}건 — <a href="#/rules">헌법</a>에서 확인</div>`);
 
   const holdRows = pf.rows.map(r => `
     <tr class="row-link" data-sym="${esc(r.symbol)}">

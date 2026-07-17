@@ -78,8 +78,8 @@ export const NAV = [
   { id: 'more', label: '더보기', ico: ICONS.more },
 ];
 export const NAV_DESKTOP = [
-  ['home', '홈'], ['trades', '기록'], ['watch', '관심'], ['returns', '수익률'], ['worlds', '평행우주'], ['actions', '개입 점수'],
-  ['diary', '일지'], ['cost', '비용'], ['quotes', '글귀'], ['letters', '서한'], ['rules', '헌법'], ['ai', 'AI 복기'], ['settings', '설정'],
+  ['home', '홈'], ['trades', '기록'], ['watch', '관심'], ['returns', '수익'], ['worlds', '평행우주'], ['actions', '회상'],
+  ['diary', '일지'], ['cost', '비용'], ['quotes', '글귀'], ['letters', '서한'], ['ai', '복기'], ['settings', '설정'],
 ];
 
 export function currentRoute() {

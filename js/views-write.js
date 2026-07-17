@@ -19,7 +19,6 @@ function packSummaryText(pk) {
     L.push(`거래 ${pk.trades.length}건:`);
     for (const t of pk.trades) L.push(`  · ${t.date} ${t.side === 'buy' ? '매수' : '매도'} ${t.name || t.symbol} ${t.qty}주 — ${(t.reason || '').slice(0, 60)}`);
   } else L.push('거래 없음 (거래가 없는 분기도 판단이다)');
-  if (pk.vio.length) L.push(`헌법 위반 ${pk.vio.length}건`);
   if (pk.diary.length) L.push(`흔들린 기록 ${pk.diary.length}건`);
   L.push('기말 보유: ' + (pk.p1.rows.map(r => `${r.name} ${(r.weight * 100).toFixed(0)}%`).join(', ') || '없음'));
   if (pk.prev) L.push(`지난 서한(${pk.prev.period})에서 한 말: "${pk.prev.body.slice(0, 80)}..."`);
@@ -79,13 +78,12 @@ function vLetters() {
       <h3>이번 분기 — ${q} ${hasCurrent ? '<span style="color:var(--accent);">✓ 작성함</span>' : ''}</h3>
       ${pk ? `
       <div class="tbl-wrap"><table class="tbl">
-        <tr><th>기간 수익률(근사)</th><th>코스피</th><th>S&P500</th><th>거래</th><th>위반</th><th>흔들림</th></tr>
+        <tr><th>기간 수익률</th><th>코스피</th><th>S&P500</th><th>거래</th><th>흔들림</th></tr>
         <tr>
           <td class="num ${pctClass(pk.ret)}">${pct(pk.ret)}</td>
           <td class="num ${pctClass(pk.bench.kospi != null ? pk.bench.kospi - 1 : null)}">${pct(pk.bench.kospi != null ? pk.bench.kospi - 1 : null)}</td>
           <td class="num ${pctClass(pk.bench.sp500 != null ? pk.bench.sp500 - 1 : null)}">${pct(pk.bench.sp500 != null ? pk.bench.sp500 - 1 : null)}</td>
           <td class="num">${pk.trades.length}건</td>
-          <td class="num">${pk.vio.length}건</td>
           <td class="num">${pk.diary.length}건</td>
         </tr>
       </table></div>` : '<div class="empty">매매 기록이 생기면 분기 요약이 자동으로 준비됩니다</div>'}
@@ -211,12 +209,12 @@ registerView('rules', vRules);
 // ---------- AI 복기 ----------
 function vAI() {
   return `
-    <div class="view-title">AI 복기</div>
+    <div class="view-title">복기</div>
     <p class="view-desc">기록 전체를 데이터 팩 하나로 만들어 Claude에게 넘기면, 통계가 못 잡는 패턴 — 글과 행동의 어긋남 — 을 심문받을 수 있습니다.</p>
     <div class="card">
       <h3>복기 데이터 팩</h3>
       <p class="small muted" style="margin:4px 0 0;">
-        담기는 것: 펀드 현황 · 평행우주 결과 · 전체 매매(이유·확신도·감정 포함) · 실현 결과와 개입 점수 · 홀딩 일지 · 헌법과 위반 · 지난 서한 전문 · 심문 지침.<br>
+        담기는 것: 펀드 현황 · 평행우주 결과 · 전체 매매(이유·확신도·감정 포함) · 실현 결과와 회상 · 홀딩 일지 · 지난 서한 전문 · 심문 지침.<br>
         사용법: 아래 버튼으로 복사 → Claude 대화창에 붙여넣기. 분기에 한 번이면 충분합니다.
       </p>
       <div class="btn-row">
@@ -380,7 +378,7 @@ function vSettings() {
       <h3>동기화 (Dropbox)</h3>
       ${Dbx.connected() ? `
         <p class="small muted" style="margin:4px 0 0;">
-          <span style="color:var(--accent);">✓ 연결됨</span> — 매매 기록·일지·헌법·서한이 내 Dropbox의 앱 전용 폴더에 저장되고 기기 간 동기화됩니다.<br>
+          <span style="color:var(--accent);">✓ 연결됨</span> — 매매 기록·일지·서한이 내 Dropbox의 앱 전용 폴더에 저장되고 기기 간 동기화됩니다.<br>
           마지막 동기화: ${Sync.lastSync() ? new Date(Sync.lastSync()).toLocaleString('ko-KR') : '아직 없음'}
           ${Sync.lastError ? `<br><span class="down">최근 오류: ${esc(Sync.lastError)}</span>` : ''}
         </p>
@@ -613,14 +611,13 @@ registerView('settings', vSettings);
 // ---------- 더보기 (모바일 메뉴) ----------
 function vMore() {
   const items = [
-    ['returns', '기간 수익률', '주간·월간·연간 평가액과 수익률'],
+    ['returns', '수익', '주간·월간·연간 평가액과 수익률'],
     ['worlds', '평행우주', '지수만 샀다면·예금만 했다면 지금 얼마인가'],
-    ['actions', '개입 점수', '매도·물타기 하나하나 채점'],
+    ['actions', '회상', '판 뒤 그 주식은 어떻게 됐나 · 물타기의 성적'],
     ['cost', '투자 비용', '빌린 돈 이자 — 매달·누적·실질 손익'],
     ['quotes', '글귀 서랍', '책에서 모은 문장, PIN 화면에서 랜덤으로'],
     ['letters', '주주 서한', '분기마다 나에게 쓰는 운용보고서'],
-    ['rules', '투자 헌법', '원칙 자동 감시와 원칙 검증'],
-    ['ai', 'AI 복기', '기록 전체를 Claude에게 심문받기'],
+    ['ai', '복기', '기록 전체를 Claude에게 심문받기'],
     ['settings', '설정', '백업 · 시세 · 앱 잠금'],
   ];
   return `

@@ -59,7 +59,7 @@ function vWorlds() {
       <p class="hint">투입 원금은 <b>밖에서 새로 끌어온 돈</b>만 셉니다 — 판 돈으로 다시 산 것은 새 투입이 아니므로, 매매를 많이 했다고 원금이 불어나지 않습니다.
       네 세계 모두 같은 날 같은 금액을 굴리므로 비교는 공정합니다. 가정: 배당 재투자 · 달러는 당일 환율 환산 · 예금은 연 ${w.rate}% 복리(세전).</p>
     </div>
-    <p class="small muted" style="margin:0 2px;">매도·물타기 하나하나의 채점은 <a href="#/actions">개입 점수</a>에서.</p>`;
+    <p class="small muted" style="margin:0 2px;">매도·물타기 하나하나의 채점은 <a href="#/actions">회상</a>에서.</p>`;
 }
 registerView('worlds', vWorlds);
 
@@ -139,7 +139,7 @@ function vActions() {
     </tr>`).join('');
 
   return `
-    <div class="view-title">개입 점수</div>
+    <div class="view-title">회상</div>
     <p class="view-desc">내 손이 계좌에 닿은 순간들. 판 뒤 그 주식이 어떻게 됐는지, 물타기한 돈이 지수보다 나았는지를 보여줍니다. 잘잘못은 판정하지 않습니다 — 판 돈을 어디에 썼는지는 당신만 압니다.</p>
     ${filterBar}
     <div class="card">
@@ -617,7 +617,7 @@ function vReturns() {
 
   if (!rows.length) {
     return `
-      <div class="view-title">기간 수익률</div>
+      <div class="view-title">수익</div>
       <p class="view-desc">기간 말(마지막 거래일 종가) 평가액을 전기 말과 비교합니다.</p>
       <div class="btn-row" style="margin:0 0 12px;">${tabs}</div>
       <div class="empty">매매 기록이 생기면 기간별 수익률이 정리됩니다</div>`;
@@ -654,7 +654,7 @@ function vReturns() {
   }
 
   return `
-    <div class="view-title">기간 수익률</div>
+    <div class="view-title">수익</div>
     <p class="view-desc">기간 말(마지막 거래일 종가) 평가액을 전기 말과 비교. 원화 기준(달러 자산은 각 시점 환율로 환산 → 환율 변동 포함).</p>
     <div class="btn-row" style="margin:0 0 12px;">${tabs}</div>
     ${done.length ? `<div class="kpis">
