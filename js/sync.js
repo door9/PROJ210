@@ -57,26 +57,39 @@ function payload(state) {
   return p;
 }
 
+// 동기화가 실제로 바꾼 게 있는지 판별용 지문. 앱으로 돌아올 때마다 동기화가 도는데,
+// 바뀐 게 없는데도 onApplied를 부르면 화면을 통째로 다시 그려 쓰던 글이 날아간다.
+function fingerprint(s) {
+  const o = { settings: s.settings, deleted: s.deleted || {} };
+  for (const c of COLLS) o[c] = s[c] || [];
+  return JSON.stringify(o);
+}
+
 export async function syncNow() {
   if (!ctx || !Dbx.connected() || syncing) return false;
   syncing = true;
   lastError = null;
+  let applied = false;
   try {
     const remoteText = await Dbx.download();
     if (remoteText) {
       let remote = null;
       try { remote = JSON.parse(remoteText); } catch { /* 손상 원격은 무시하고 덮어씀 */ }
       if (remote) {
+        const before = fingerprint(ctx.state);
         const merged = mergeAll(ctx.state, remote);
         for (const c of COLLS) ctx.state[c] = merged[c];
         ctx.state.settings = merged.settings;
         ctx.state.deleted = merged.deleted;
-        ctx.persist();
+        if (fingerprint(ctx.state) !== before) {
+          ctx.persist();
+          applied = true;
+        }
       }
     }
     await Dbx.upload(JSON.stringify(payload(ctx.state)));
     localStorage.setItem(K_LAST, String(Date.now()));
-    ctx.onApplied?.();
+    if (applied) ctx.onApplied?.();   // 실제로 바뀐 게 있을 때만 화면 갱신
     return true;
   } catch (e) {
     lastError = String(e && e.message || e);

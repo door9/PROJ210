@@ -105,6 +105,29 @@ export function render() {
   window.scrollTo(0, 0);
 }
 
+// 사용자가 지금 쓰고 있는 글이 있는가 (화면·모달의 입력칸 중 내용이 든 것).
+function hasUnsavedInput() {
+  for (const root of [document.getElementById('view'), document.getElementById('modal-root')]) {
+    if (!root) continue;
+    for (const el of root.querySelectorAll('textarea, input')) {
+      if (el.disabled || el.readOnly || el.type === 'hidden'
+          || el.type === 'checkbox' || el.type === 'radio' || el.type === 'file') continue;
+      if ((el.value || '').trim() !== '') return true;
+    }
+  }
+  return false;
+}
+
+// 사용자가 요청하지 않았는데 저절로 부르는 렌더(동기화·시세 로드)는 이걸 쓴다.
+// render()는 #view를 innerHTML로 통째로 갈아엎으므로, 쓰던 글이 그 자리에서 사라진다
+// (실제로 홀딩 일지를 쓰다 다른 앱에 갔다 오니 글이 날아갔다 — 돌아올 때 도는 동기화가 범인).
+// 화면을 새로 그리지 않아도 state는 이미 갱신돼 있으므로, 다음에 화면을 옮기면 반영된다.
+export function renderIfIdle() {
+  if (hasUnsavedInput()) return false;
+  render();
+  return true;
+}
+
 function renderNav(route) {
   const bn = document.getElementById('bottom-nav');
   bn.innerHTML = NAV.map(n => {
@@ -138,7 +161,7 @@ export async function triggerRefresh() {
     setTimeout(async () => {
       await P.load(state.settings);
       refreshPriceStatus();
-      render();
+      renderIfIdle();   // 그 사이 사용자가 뭔가 쓰고 있으면 화면을 갈아엎지 않는다
       refreshing = false;
       setRefreshingUI(false);
       toast('시세를 갱신했습니다');
