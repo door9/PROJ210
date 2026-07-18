@@ -605,12 +605,33 @@ function twrCalculator(state) {
 const pad2 = n => String(n).padStart(2, '0');
 const lastDayOfMonth = (y, m) => new Date(y, m, 0).getDate(); // m: 1-based
 
+// 기간 내 매도로 '확정된' 손익(원화, 매도일 환율). 증권사 '실현수익/판매수익'과 대조하는 용도.
+//
+// 주의: 이건 순손익(gain)의 일부가 아니다. 2024년에 사서 2025년에 팔았다면 그 이익 전부가
+// 2025년 실현손익으로 잡히지만, 2025년 순손익에는 2025년에 오른 만큼만 들어간다(2024년분은
+// 이미 2024년 평가손익으로 셌으므로). 그래서 두 숫자는 더해지지도, 같아지지도 않는다.
+// 또 수수료·제세금·배당금·환차손익은 앱이 추적하지 않으므로 증권사 수치와 몇 %는 어긋난다.
+function realizedByDate(state) {
+  const { realized } = replay(sortedTrades(state));
+  return realized.map(r => {
+    const cur = P.currencyOf(r.sell.symbol);
+    // 원화 실현손익 = 매도대금(매도일 환율) − 취득원가(각 매수일 환율).
+    // 달러 손익을 매도일 환율로만 환산하면 '환차손익'(산 뒤 환율이 움직인 몫)이 통째로 빠져
+    // 증권사 원화 실현수익과 어긋난다. 매수일 환율로 원가를 환산해야 그 몫이 들어온다.
+    const proceedsKRW = P.toKRW(r.proceeds, cur, r.sell.date) || 0;
+    let costKRW = 0;
+    for (const p of r.parts) costKRW += P.toKRW(unitCost(p.buy) * p.qty, cur, p.buy.date) || 0;
+    return { date: r.sell.date, krw: proceedsKRW - costKRW };
+  });
+}
+
 export function periodReturns(state, unit = 'month') {
   const trades = sortedTrades(state);
   if (!trades.length) return [];
   const today = todayStr();
   const first = trades[0].date;
   const calc = twrCalculator(state);
+  const realList = realizedByDate(state);
 
   // 기간 말 날짜 목록(ends)과 라벨 함수
   const ends = [];
@@ -642,10 +663,12 @@ export function periodReturns(state, unit = 'month') {
     const endVal = calc.valueOn(end);
     const contrib = calc.flowsIn(prevEnd, end);  // 기중 들어온(+)·나간(−) 돈
     const change = endVal - prevVal;             // 평가액 증감(그 돈 포함)
-    const gain = change - contrib;               // 순손익(그 돈 제외 = 실제로 번 돈)
+    const gain = change - contrib;               // 순손익(그 돈 제외) = 실현 + 미실현 평가변동
+    // 기간 내 매도로 확정된 손익 (증권사 실현수익과 대조용 — 순손익과는 별개 지표)
+    const realized = realList.reduce((s, x) => (x.date > prevEnd && x.date <= end) ? s + x.krw : s, 0);
     rows.push({
       label: labelOf(prevEnd, end), start: prevEnd, end, isCurrent: end === today,
-      startVal: prevVal, endVal, contrib, change, gain,
+      startVal: prevVal, endVal, contrib, change, gain, realized,
       ret: calc.ret(prevEnd, prevVal, end),
     });
     prevEnd = end; prevVal = endVal;

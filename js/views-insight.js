@@ -638,7 +638,8 @@ function vReturns() {
       <td>${esc(r.label)}${r.isCurrent ? ' <span class="muted small">진행 중</span>' : ''}</td>
       <td class="num">${fmtMoney(r.endVal)}</td>
       <td class="num ${pctClass(r.change)}">${fmtMoney(r.change)}${flowNote(r.contrib)}</td>
-      <td class="num ${pctClass(r.gain)}">${fmtMoney(r.gain)}</td>
+      <td class="num ${pctClass(r.realized)}">${fmtMoney(r.realized)}</td>
+      <td class="num ${pctClass(r.gain)}">${fmtMoney(r.gain)}<br><span class="muted small">평가 ${fmtMoney(r.gain - r.realized)}</span></td>
       <td class="num ${pctClass(r.ret)}"><b>${fmtPct(r.ret)}</b></td>
     </tr>`;
   // 주간은 라벨에 연도가 없으므로, 연도가 바뀔 때마다 구분 행을 한 번씩 넣는다
@@ -647,7 +648,7 @@ function vReturns() {
     let prevYear = null;
     body = rows.map(r => {
       const y = r.end.slice(0, 4);
-      const sep = y !== prevYear ? `<tr class="year-sep"><td colspan="5">${y}년</td></tr>` : '';
+      const sep = y !== prevYear ? `<tr class="year-sep"><td colspan="6">${y}년</td></tr>` : '';
       prevYear = y;
       return sep + rowHtml(r);
     }).join('');
@@ -657,7 +658,8 @@ function vReturns() {
 
   return `
     <div class="view-title">수익</div>
-    <p class="view-desc">기간 말(마지막 거래일 종가) 평가액을 전기 말과 비교. 원화 기준(달러 자산은 각 시점 환율로 환산 → 환율 변동 포함).</p>
+    <p class="view-desc">기간 말(마지막 거래일 종가) 평가액을 전기 말과 비교. 원화 기준(달러 자산은 각 시점 환율로 환산 → 환율 변동 포함).
+    <b>실현손익</b>은 판 것만, <b>순손익</b>은 보유분 평가변동까지 포함한 값입니다.</p>
     <div class="btn-row" style="margin:0 0 12px;">${tabs}</div>
     ${done.length ? `<div class="kpis">
       <div class="kpi"><div class="k">${UNIT_LABEL[unit]} 평균 수익률</div><div class="v ${pctClass(avg)}">${fmtPct(avg)}</div><div class="s">완료된 ${done.length}개 기간</div></div>
@@ -666,14 +668,25 @@ function vReturns() {
     </div>` : ''}
     <div class="card">
       <div class="tbl-wrap"><table class="tbl">
-        <tr><th>기간</th><th class="num">기말 평가액</th><th class="num">전기比 증감</th><th class="num">순손익</th><th class="num">수익률</th></tr>
+        <tr><th>기간</th><th class="num">기말 평가액</th><th class="num">전기比 증감</th><th class="num">실현손익</th><th class="num">순손익</th><th class="num">수익률</th></tr>
         ${body}
       </table></div>
-      <p class="hint">전기比 증감은 들어오고 나간 돈까지 포함한 평가액 변화이고, <b>순손익</b>은 그 돈을 뺀 실제로 번 돈입니다.<br>
-      <b>수익률은 시간가중(TWR)</b> — 돈이 들어오고 나간 날마다 구간을 끊어 각 구간 수익률을 곱합니다.
-      그래서 "얼마를 언제 넣었나"가 수익률에 섞이지 않습니다. 기존 잔액이 적었는데 기말에 원금을 크게 넣어
-      순손익이 커져도, 그 돈이 실제로 굴러간 기간의 성적만 반영되므로 수익률이 부풀지 않습니다.
-      번 <b>금액</b>이 궁금하면 순손익을, 운용 <b>성적</b>이 궁금하면 수익률을 보세요.</p>
+      <div class="warnbox" style="margin-top:10px;">
+        <b>실현손익과 순손익은 다른 숫자입니다 — 더해지지도, 같아지지도 않습니다.</b><br>
+        · <b>실현손익</b>: 그 기간에 <b>판 것</b>으로 확정된 손익. 증권사 '실현수익(판매수익)'과 비교할 값입니다.<br>
+        · <b>순손익</b>: 보유 중인 종목의 <b>평가액 변동까지 포함</b>한 그 기간의 총 손익(괄호의 '평가'가 미실현분).<br>
+        2024년에 사서 2025년에 팔았다면 그 이익 <b>전부</b>가 2025년 실현손익이지만, 2025년 순손익엔 2025년에
+        오른 만큼만 들어갑니다(2024년분은 이미 2024년 평가손익으로 셌으므로). 그래서 둘은 어긋나는 게 정상입니다.
+      </div>
+      <p class="hint">전기比 증감은 들어오고 나간 돈까지 포함한 평가액 변화입니다.
+      <b>수익률은 시간가중(TWR)</b> — 돈이 들어오고 나간 날마다 구간을 끊어 각 구간 수익률을 곱하므로
+      "얼마를 언제 넣었나"가 수익률에 섞이지 않습니다.<br>
+      <b>증권사 수치와는 이만큼 어긋납니다(확인된 원인).</b><br>
+      · <b>수수료·제세금 미반영</b> — 증권사 실현수익은 이를 뺀 값입니다(국내주식은 이 차이만 빼면 원 단위로 일치).<br>
+      · <b>배당금·계좌이자 미포함</b> — 증권사 '총 실현수익'에는 들어갑니다.<br>
+      · <b>환율 출처가 다름</b> — 앱은 시장 중간환율(달러 실현손익은 매수일·매도일 환율로 환산해 환차손익 포함),
+      증권사는 스프레드가 붙은 <b>자체 적용환율</b>(살 때 비싸게·팔 때 싸게)을 씁니다. 그래서 <b>미국주식은 몇 %까지 벌어집니다.</b><br>
+      세금 신고용 정확한 수치는 증권사 화면을 보세요. 이 표는 <b>내 판단의 성적</b>을 보는 용도입니다.</p>
     </div>`;
 }
 vReturns.bind_ = (root) => {
