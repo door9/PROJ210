@@ -13,6 +13,25 @@ export function moneyShort(v) {
 const registry = new Map(); // id -> { series, labels, height, format, zoom, geom, lastW }
 let seq = 0;
 
+// 표 안에 넣는 초소형 추세선. 값 배열만 받아 SVG 한 조각을 돌려준다.
+// 구간 등락(첫값 대비 끝값)으로 색을 정한다 — 오름 빨강/내림 파랑(국내 관행, CSS 변수 사용).
+export function sparkline(values, { w = 76, h = 24, pad = 2 } = {}) {
+  const v = (values || []).filter(x => x != null && isFinite(x));
+  if (v.length < 2) return `<span class="spark-none">–</span>`;
+  let min = Math.min(...v), max = Math.max(...v);
+  if (min === max) { min -= 1; max += 1; }
+  const n = v.length;
+  const x = i => (pad + (w - pad * 2) * i / (n - 1)).toFixed(1);
+  const y = k => (pad + (h - pad * 2) * (1 - (k - min) / (max - min))).toFixed(1);
+  let d = '';
+  for (let i = 0; i < n; i++) d += (i ? 'L' : 'M') + x(i) + ' ' + y(v[i]);
+  const up = v[n - 1] >= v[0];
+  const color = up ? 'var(--up)' : 'var(--down)';
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">`
+    + `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`
+    + `<circle cx="${x(n - 1)}" cy="${y(v[n - 1])}" r="1.8" fill="${color}"/></svg>`;
+}
+
 // 셸만 반환한다(툴바·스크롤 영역·툴팁·범례). 실제 SVG는 bindCharts에서 그린다.
 export function lineChart({ series, labels, height = 300, format = moneyShort }) {
   const id = 'ch' + (++seq);

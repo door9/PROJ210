@@ -6,6 +6,7 @@ import * as E from './engine.js';
 import { uid, todayStr, esc, fmtMoney, moneyKorean, fmtPct, fmtQty, fmtFx, pctClass, quarterOf } from './util.js';
 import * as Dbx from './dropbox.js';
 import * as Lock from './lock.js';
+import { sparkline } from './chart.js';
 
 // ---------- 홈 ----------
 // 현금 잔액 입력 — 홈 표의 현금 행에서 바로 연다. 설정의 '현금 잔액' 카드와 같은 일을 하며
@@ -92,8 +93,10 @@ function vHome() {
     <tr class="row-link" data-sym="${esc(r.symbol)}">
       <td><b>${esc(r.name)}</b> <span class="chev">›</span><br><span class="muted small">${esc(r.symbol)}</span></td>
       <td class="num">${fmtQty(r.qty)}주</td>
+      <td class="num">${fmtMoney(r.cost, r.cur)}<br><span class="muted small">${(r.costWeight * 100).toFixed(1)}%</span></td>
       <td class="num">${fmtMoney(r.value, r.cur)}<br><span class="muted small">${(r.weight * 100).toFixed(1)}%</span></td>
       <td class="num ${pctClass(r.ret)}">${fmtPct(r.ret)}</td>
+      <td class="spark-cell">${sparkline(P.recentAdj(r.symbol))}</td>
     </tr>`).join('');
   // 현금 잔액 — 사용자가 직접 입력한 값만 (앱은 매도 대금을 현금으로 추정하지 않는다).
   // 잔액이 0이어도, 아직 입력 전이어도 두 행은 항상 둔다 — 눌러서 바로 고칠 자리이자,
@@ -102,8 +105,10 @@ function vHome() {
     <tr class="row-link" data-cash="${curc}">
       <td><b>${label}</b> <span class="chev">›</span><br><span class="muted small">${pf.cashTracked ? esc(pf.cashAsOf) + ' 입력' : '미입력 — 눌러서 설정'}</span></td>
       <td class="num">–</td>
+      <td class="num">–</td>
       <td class="num">${fmtMoney(amt, curc)}</td>
       <td class="num">–</td>
+      <td class="spark-cell">–</td>
     </tr>`;
   const cashRows = cashRow('원화 현금', pf.cash.KRW, 'KRW') + cashRow('달러 현금', pf.cash.USD, 'USD');
 
@@ -160,8 +165,8 @@ function vHome() {
     <div class="card">
       <h3>보유 종목</h3>
       <div class="tbl-wrap"><table class="tbl">
-        <tr><th>종목</th><th class="num">수량</th><th class="num">평가액</th><th class="num">수익률</th></tr>
-        ${holdRows || '<tr><td colspan="4" class="muted">보유 중인 종목이 없습니다</td></tr>'}${cashRows}
+        <tr><th>종목</th><th class="num">수량</th><th class="num">매입액<br><span class="muted">(매입비중)</span></th><th class="num">평가액<br><span class="muted">(평가비중)</span></th><th class="num">수익률</th><th class="num">그래프</th></tr>
+        ${holdRows || '<tr><td colspan="6" class="muted">보유 중인 종목이 없습니다</td></tr>'}${cashRows}
       </table></div>
     </div>
     <div class="btn-row">

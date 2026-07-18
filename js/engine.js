@@ -70,7 +70,9 @@ export function heldQty(state, symbol, date) {
 function lotValue(lot, date) {
   const cost = unitCost(lot.t) * lot.qtyLeft;
   const g = P.growth(lot.t.symbol, lot.t.date, date);
-  return { cur: P.currencyOf(lot.t.symbol), cost, value: g ? cost * g : cost, hasPrice: !!g };
+  // 매입액의 원화 환산은 '살 때 실제 적용된 환율'로 (평가액은 그 시점 시장 환율).
+  return { cur: P.currencyOf(lot.t.symbol), cost, costKRW: tradeKRW(lot.t, cost),
+           value: g ? cost * g : cost, hasPrice: !!g };
 }
 
 // ---- 자금 원장: 밖에서 새로 들여온(내간) 돈만 골라낸다 --------------------------
@@ -167,9 +169,9 @@ export function portfolio(state, date = null) {
   for (const lot of open) {
     const v = lotValue(lot, d);
     const sym = lot.t.symbol;
-    if (!bySym.has(sym)) bySym.set(sym, { symbol: sym, name: lot.t.name || sym, cur: v.cur, qty: 0, cost: 0, value: 0, firstBuy: lot.t.date, hasPrice: v.hasPrice });
+    if (!bySym.has(sym)) bySym.set(sym, { symbol: sym, name: lot.t.name || sym, cur: v.cur, qty: 0, cost: 0, costKRW: 0, value: 0, firstBuy: lot.t.date, hasPrice: v.hasPrice });
     const r = bySym.get(sym);
-    r.qty += lot.qtyLeft; r.cost += v.cost; r.value += v.value;
+    r.qty += lot.qtyLeft; r.cost += v.cost; r.costKRW += v.costKRW; r.value += v.value;
     if (lot.t.date < r.firstBuy) r.firstBuy = lot.t.date;
     r.hasPrice = r.hasPrice && v.hasPrice;
   }
@@ -180,7 +182,11 @@ export function portfolio(state, date = null) {
     lastClose: P.closeOn(r.symbol, d),
   }));
   const investedKRW = rows.reduce((s, r) => s + (r.valueKRW || 0), 0);
-  rows.forEach(r => r.weight = investedKRW > 0 ? (r.valueKRW || 0) / investedKRW : 0);
+  const costTotalKRW = rows.reduce((s, r) => s + (r.costKRW || 0), 0);
+  rows.forEach(r => {
+    r.weight = investedKRW > 0 ? (r.valueKRW || 0) / investedKRW : 0;          // 평가 비중
+    r.costWeight = costTotalKRW > 0 ? (r.costKRW || 0) / costTotalKRW : 0;      // 매입 비중
+  });
   rows.sort((a, b) => (b.valueKRW || 0) - (a.valueKRW || 0));
 
   // 통화별 순 투입 원금 = 밖에서 들여온 순 자본 (환산하지 않고 통화 그대로 집계).

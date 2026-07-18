@@ -208,6 +208,14 @@ export function firstDate(sym) {
   return d?.closes.length ? d.closes[0][0] : null;
 }
 
+// 최근 n개 수정종가 (보유 종목 표의 추세 스파크라인용).
+// 수정종가를 쓰는 이유: 액면분할·병합이 있으면 원종가는 그 지점에서 뚝 끊겨 가짜 급락처럼 보인다.
+export function recentAdj(sym, n = 120) {
+  const d = map.get(sym);
+  if (!d || !d.closes.length) return [];
+  return d.closes.slice(-n).map(r => r[2]).filter(v => v != null && isFinite(v));
+}
+
 // 배당·분할 반영 성장배수. to 생략 시 최신까지.
 export function growth(sym, from, to = null) {
   const a = adjOn(sym, from);
