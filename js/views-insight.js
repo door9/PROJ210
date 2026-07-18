@@ -627,10 +627,69 @@ registerView('cost', vCost);
 
 // ---------- 기간 수익률 (주간/월간/연간) ----------
 let returnsUnit = 'month';
+let returnsRows = [];   // 화면에 그린 기간들 — 행을 눌렀을 때 되찾으려고 들고 있는다
 const UNIT_LABEL = { week: '주간', month: '월간', year: '연간' };
+
+// 기간 한 줄을 눌렀을 때: 그 기간 '말일'의 보유 현황과, 그 기간에 확정된 매도 상세.
+function openPeriodDetail(r) {
+  const pf = E.portfolio(state, r.end);
+  const det = E.realizedDetail(state, r.start, r.end);
+  const realizedSum = det.reduce((s, x) => s + x.krw, 0);
+
+  const holdRows = pf.rows.map(x => `
+    <tr>
+      <td><b>${esc(x.name)}</b><br><span class="muted small">${esc(x.symbol)}</span></td>
+      <td class="num">${fmtQty(x.qty)}주</td>
+      <td class="num">${fmtMoney(x.cost, x.cur)}</td>
+      <td class="num">${fmtMoney(x.value, x.cur)}<br><span class="muted small">${(x.weight * 100).toFixed(1)}%</span></td>
+      <td class="num ${pctClass(x.ret)}">${fmtPct(x.ret)}</td>
+    </tr>`).join('');
+
+  const cashLine = pf.cashTracked
+    ? `<p class="hint">현금 ${fmtMoney(pf.cash.KRW)}${pf.cash.USD ? ' + ' + fmtMoney(pf.cash.USD, 'USD') : ''}
+       <span class="muted">(${esc(pf.cashAsOf)} 입력분)</span> 포함</p>`
+    : `<p class="hint">이 시점엔 현금 입력이 없어 <b>보유 주식만</b> 집계했습니다.</p>`;
+
+  const detRows = det.map(x => `
+    <tr>
+      <td>${esc(x.date)}<br><span class="muted small">${esc(x.name)}</span></td>
+      <td class="num">${fmtQty(x.qty)}주</td>
+      <td class="num ${pctClass(x.krw)}"><b>${fmtMoney(x.krw)}</b></td>
+      <td class="num ${pctClass(x.ret)}">${fmtPct(x.ret)}</td>
+      <td class="num muted small">${x.holdDays != null ? Math.round(x.holdDays) + '일' : '–'}${x.reasonType ? '<br>' + esc(x.reasonType) : ''}</td>
+    </tr>`).join('');
+
+  openModal(`
+    <h2>${esc(r.label)}${r.isCurrent ? ' <span class="muted small">진행 중</span>' : ''}</h2>
+    <p class="small muted" style="margin-top:-6px;">
+      보유 현황은 <b>${esc(r.end)}</b> 종가 기준 · 실현손익은 <b>${esc(r.start)} 다음날부터 ${esc(r.end)}까지</b> 판 것</p>
+    <dl class="hero-facts">
+      <dt>기말 평가액</dt><dd>${fmtMoney(r.endVal)}</dd>
+      <dt>실현손익</dt><dd class="${pctClass(realizedSum)}">${fmtMoney(realizedSum)} <span class="muted small">(${det.length}건)</span></dd>
+      <dt>순손익</dt><dd class="${pctClass(r.gain)}">${fmtMoney(r.gain)} <span class="muted small">평가 ${fmtMoney(r.gain - r.realized)}</span></dd>
+      <dt>수익률</dt><dd class="${pctClass(r.ret)}"><b>${fmtPct(r.ret)}</b></dd>
+    </dl>
+    <h3 style="margin:16px 0 8px; font-size:14px;">${esc(r.end)} 보유 종목 (${pf.rows.length})</h3>
+    ${pf.rows.length ? `<div class="tbl-wrap"><table class="tbl">
+      <tr><th>종목</th><th class="num">수량</th><th class="num">매입액</th><th class="num">평가액</th><th class="num">수익률</th></tr>
+      ${holdRows}
+    </table></div>${cashLine}` : '<div class="empty">이 시점엔 보유 종목이 없습니다</div>'}
+    <h3 style="margin:16px 0 8px; font-size:14px;">이 기간에 판 것 (${det.length})</h3>
+    ${det.length ? `<div class="tbl-wrap"><table class="tbl">
+      <tr><th>매도일 · 종목</th><th class="num">수량</th><th class="num">실현손익</th><th class="num">수익률</th><th class="num">보유</th></tr>
+      ${detRows}
+    </table></div>
+    <p class="hint">실현손익은 원화 기준(매도 환율로 대금, 매수 환율로 원가 → 환차 포함)이고 수수료·제세금이 반영돼 있습니다.
+    수익률은 그 종목 자기 통화 기준입니다.</p>` : '<div class="empty">이 기간엔 판 종목이 없습니다</div>'}
+    <div class="btn-row" style="justify-content:flex-end;">
+      <button class="btn" data-x="close">닫기</button>
+    </div>`).querySelector('[data-x=close]').onclick = closeModal;
+}
+
 function vReturns() {
   const unit = returnsUnit;
   const rows = E.periodReturns(state, unit);
+  returnsRows = rows;
   const tabs = ['week', 'month', 'year'].map(u =>
     `<button class="btn small ${u === unit ? 'primary' : ''}" data-unit="${u}">${UNIT_LABEL[u]}</button>`).join(' ');
 
@@ -650,9 +709,9 @@ function vReturns() {
 
   const flowNote = c => Math.abs(c) < 1 ? ''
     : `<br><span class="muted small">${c > 0 ? '투입' : '회수'} ${fmtMoney(Math.abs(c))}</span>`;
-  const rowHtml = r => `
-    <tr>
-      <td>${esc(r.label)}${r.isCurrent ? ' <span class="muted small">진행 중</span>' : ''}</td>
+  const rowHtml = (r, i) => `
+    <tr class="row-link" data-period="${i}">
+      <td>${esc(r.label)} <span class="chev">›</span>${r.isCurrent ? ' <span class="muted small">진행 중</span>' : ''}</td>
       <td class="num">${fmtMoney(r.endVal)}</td>
       <td class="num ${pctClass(r.change)}">${fmtMoney(r.change)}${flowNote(r.contrib)}</td>
       <td class="num ${pctClass(r.realized)}">${fmtMoney(r.realized)}</td>
@@ -663,14 +722,14 @@ function vReturns() {
   let body;
   if (unit === 'week') {
     let prevYear = null;
-    body = rows.map(r => {
+    body = rows.map((r, i) => {
       const y = r.end.slice(0, 4);
       const sep = y !== prevYear ? `<tr class="year-sep"><td colspan="6">${y}년</td></tr>` : '';
       prevYear = y;
-      return sep + rowHtml(r);
+      return sep + rowHtml(r, i);
     }).join('');
   } else {
-    body = rows.map(rowHtml).join('');
+    body = rows.map((r, i) => rowHtml(r, i)).join('');
   }
 
   return `
@@ -710,6 +769,10 @@ function vReturns() {
 vReturns.bind_ = (root) => {
   root.querySelectorAll('[data-unit]').forEach(b => b.addEventListener('click', () => {
     returnsUnit = b.dataset.unit; render();
+  }));
+  root.querySelectorAll('tr.row-link[data-period]').forEach(tr => tr.addEventListener('click', () => {
+    const r = returnsRows[Number(tr.dataset.period)];
+    if (r) openPeriodDetail(r);
   }));
 };
 registerView('returns', vReturns);

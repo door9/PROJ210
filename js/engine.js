@@ -639,17 +639,40 @@ const lastDayOfMonth = (y, m) => new Date(y, m, 0).getDate(); // m: 1-based
 // 2025년 실현손익으로 잡히지만, 2025년 순손익에는 2025년에 오른 만큼만 들어간다(2024년분은
 // 이미 2024년 평가손익으로 셌으므로). 그래서 두 숫자는 더해지지도, 같아지지도 않는다.
 // 또 수수료·제세금·배당금·환차손익은 앱이 추적하지 않으므로 증권사 수치와 몇 %는 어긋난다.
+// 원화 실현손익 = 매도대금(매도 환율) − 취득원가(각 매수 환율).
+// 달러 손익을 매도일 환율로만 환산하면 '환차손익'(산 뒤 환율이 움직인 몫)이 통째로 빠져
+// 증권사 원화 실현수익과 어긋난다. 매수일 환율로 원가를 환산해야 그 몫이 들어온다.
+function realizedKRW(r) {
+  let costKRW = 0;
+  for (const p of r.parts) costKRW += tradeKRW(p.buy, unitCost(p.buy) * p.qty);
+  return tradeKRW(r.sell, r.proceeds) - costKRW;
+}
+
 function realizedByDate(state) {
   const { realized } = replay(sortedTrades(state));
-  return realized.map(r => {
-    // 원화 실현손익 = 매도대금(매도 환율) − 취득원가(각 매수 환율).
-    // 달러 손익을 매도일 환율로만 환산하면 '환차손익'(산 뒤 환율이 움직인 몫)이 통째로 빠져
-    // 증권사 원화 실현수익과 어긋난다. 매수일 환율로 원가를 환산해야 그 몫이 들어온다.
-    const proceedsKRW = tradeKRW(r.sell, r.proceeds);
-    let costKRW = 0;
-    for (const p of r.parts) costKRW += tradeKRW(p.buy, unitCost(p.buy) * p.qty);
-    return { date: r.sell.date, krw: proceedsKRW - costKRW };
-  });
+  return realized.map(r => ({ date: r.sell.date, krw: realizedKRW(r) }));
+}
+
+// 기간(from 제외 ~ to 포함) 안에 확정된 매도 한 건씩. 수익 화면에서 기간을 눌렀을 때 쓴다.
+export function realizedDetail(state, from, to) {
+  const { realized } = replay(sortedTrades(state));
+  return realized
+    .filter(r => r.sell.date > from && r.sell.date <= to)
+    .map(r => ({
+      date: r.sell.date,
+      symbol: r.sell.symbol,
+      name: r.sell.name || r.sell.symbol,
+      cur: P.currencyOf(r.sell.symbol),
+      qty: r.sell.qty,
+      proceeds: r.proceeds,
+      cost: r.costSum,
+      pnl: r.pnl,          // 자기 통화 손익
+      ret: r.ret,
+      holdDays: r.holdDays,
+      krw: realizedKRW(r), // 원화 실현손익(환차 포함)
+      reasonType: r.sell.sellReasonType || '',
+    }))
+    .sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0); // 최신 먼저
 }
 
 export function periodReturns(state, unit = 'month') {
