@@ -18,6 +18,15 @@ function unitCost(buy) {
   return (buy.price * buy.qty + (buy.fee || 0)) / buy.qty;
 }
 
+// 그 거래에 '실제로 적용된' 환율로 원화 환산. t.fx는 증권사 체결 환율(스프레드 포함)이며
+// 임포트 때 주문내역의 원화·달러 금액에서 역산해 넣는다. 없으면 시장 환율로 대체한다.
+// 시장 중간환율로 환산하면 증권사 실현손익과 몇 %씩 어긋난다(스프레드가 빠지므로).
+export function tradeKRW(t, amount) {
+  const cur = P.currencyOf(t.symbol);
+  if (cur !== 'KRW' && t.fx) return amount * t.fx;
+  return P.toKRW(amount, cur, t.date) || 0;
+}
+
 // FIFO 재생: upto 날짜까지의 보유 lot과 실현 손익
 export function replay(trades, upto = null) {
   const open = [];       // {t, qtyLeft}
@@ -552,11 +561,10 @@ export function loanStatus(state, asOf = null) {
 function flowEvents(state) {
   const ev = [];
   for (const t of sortedTrades(state)) {
-    const cur = P.currencyOf(t.symbol);
     const amt = t.side === 'buy'
       ? t.price * t.qty + (t.fee || 0)
       : -(t.price * t.qty - (t.fee || 0));
-    ev.push({ date: t.date, amtKRW: P.toKRW(amt, cur, t.date) || 0 });
+    ev.push({ date: t.date, amtKRW: tradeKRW(t, amt) });
   }
   let prev = { KRW: 0, USD: 0 };
   for (const e of cashLog(state)) {
@@ -614,13 +622,12 @@ const lastDayOfMonth = (y, m) => new Date(y, m, 0).getDate(); // m: 1-based
 function realizedByDate(state) {
   const { realized } = replay(sortedTrades(state));
   return realized.map(r => {
-    const cur = P.currencyOf(r.sell.symbol);
-    // 원화 실현손익 = 매도대금(매도일 환율) − 취득원가(각 매수일 환율).
+    // 원화 실현손익 = 매도대금(매도 환율) − 취득원가(각 매수 환율).
     // 달러 손익을 매도일 환율로만 환산하면 '환차손익'(산 뒤 환율이 움직인 몫)이 통째로 빠져
     // 증권사 원화 실현수익과 어긋난다. 매수일 환율로 원가를 환산해야 그 몫이 들어온다.
-    const proceedsKRW = P.toKRW(r.proceeds, cur, r.sell.date) || 0;
+    const proceedsKRW = tradeKRW(r.sell, r.proceeds);
     let costKRW = 0;
-    for (const p of r.parts) costKRW += P.toKRW(unitCost(p.buy) * p.qty, cur, p.buy.date) || 0;
+    for (const p of r.parts) costKRW += tradeKRW(p.buy, unitCost(p.buy) * p.qty);
     return { date: r.sell.date, krw: proceedsKRW - costKRW };
   });
 }
