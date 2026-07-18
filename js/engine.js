@@ -94,12 +94,15 @@ export function capitalLedger(state, upto = null) {
   const trades = sortedTrades(state);
   const pool = { KRW: 0, USD: 0 };
   const netCap = { KRW: 0, USD: 0 };
-  const events = [];   // 밖에서 들어온(나간) 돈 [{date, cur, amt, amtKRW}] — 평행우주가 쓴다
+  // 밖에서 들어온(나간) 돈 [{date, cur, amt, amtKRW, src}] — 평행우주가 쓴다.
+  // src: 'trade'=매수에 새로 든 돈 / 'cash'=현금 입력이 장부와 달라 생긴 조정.
+  // 'cash'가 붙은 건은 한 번에 크게 튀어 그래프에서 이유 없는 절벽처럼 보이므로 화면에서 설명한다.
+  const events = [];
   const entries = cashLog(state).filter(e => !upto || e.date <= upto);
   let ei = 0;
 
-  const push = (date, cur, amt) => {
-    if (Math.abs(amt) > 1e-9) events.push({ date, cur, amt, amtKRW: P.toKRW(amt, cur, date) || 0 });
+  const push = (date, cur, amt, src) => {
+    if (Math.abs(amt) > 1e-9) events.push({ date, cur, amt, amtKRW: P.toKRW(amt, cur, date) || 0, src });
   };
   const applyCashEntry = (e) => {
     for (const cur of ['KRW', 'USD']) {
@@ -107,7 +110,7 @@ export function capitalLedger(state, upto = null) {
       const diff = declared - pool[cur];   // 장부보다 많으면 밖에서 온 돈, 적으면 인출
       netCap[cur] += diff;
       pool[cur] = declared;
-      push(e.date, cur, diff);
+      push(e.date, cur, diff, 'cash');
     }
   };
 
@@ -121,7 +124,7 @@ export function capitalLedger(state, upto = null) {
       pool[cur] -= fromPool;
       const ext = cost - fromPool;
       netCap[cur] += ext;
-      push(t.date, cur, ext);
+      push(t.date, cur, ext, 'trade');
     } else {
       pool[cur] += t.price * t.qty - (t.fee || 0);
     }
@@ -247,6 +250,8 @@ export function worlds(state, upto = null) {
   const set = new Set([start, end]);
   for (let i = step; i < span; i += step) set.add(addDaysStr(start, i));
   for (const t of trades) set.add(t.date);
+  // 현금 입력일도 격자에 넣는다 — 그날 자본이 한 번에 조정되므로 계단이 정확한 날짜에 찍히게.
+  for (const e of cashLog(state)) if (e.date >= start && e.date <= end) set.add(e.date);
   const dates = [...set].sort();
 
   // 모든 세계는 "밖에서 새로 들여온 돈"만 굴린다 — 실제의 나와 조건을 맞춰야 비교가 공정하다.
@@ -264,8 +269,17 @@ export function worlds(state, upto = null) {
     if (s) sUnits.push({ date: c.date, units: amtUSD / s });
   }
 
+  // 현금 입력이 장부와 달라 자본이 한 번에 조정된 지점 — 그래프에서 절벽처럼 보이므로 설명용으로 넘긴다.
+  const cashAdj = [];
+  {
+    const byDate = new Map();
+    for (const c of contribs) if (c.src === 'cash') byDate.set(c.date, (byDate.get(c.date) || 0) + c.amtKRW);
+    for (const [date, amtKRW] of byDate) if (Math.abs(amtKRW) >= 1) cashAdj.push({ date, amtKRW });
+    cashAdj.sort((a, b) => a.date < b.date ? -1 : 1);
+  }
+
   const rate = (state.settings?.depositRate ?? 3) / 100; // 정기예금 가정 금리(연, 복리)
-  const out = { dates, deposits: [], actual: [], kospi: [], sp500: [], bank: [], rate: rate * 100 };
+  const out = { dates, deposits: [], actual: [], kospi: [], sp500: [], bank: [], rate: rate * 100, cashAdj };
   for (const d of dates) {
     // 투입 원금 + 예금 세계(같은 날 같은 금액을 연 rate% 복리로)
     let dep = 0, bank = 0;

@@ -33,9 +33,10 @@ export function sparkline(values, { w = 76, h = 24, pad = 2 } = {}) {
 }
 
 // 셸만 반환한다(툴바·스크롤 영역·툴팁·범례). 실제 SVG는 bindCharts에서 그린다.
-export function lineChart({ series, labels, height = 300, format = moneyShort }) {
+// markers: [{date, label}] — 그 날짜에 세로 점선과 라벨을 찍는다(자본이 한 번에 조정된 지점 표시용).
+export function lineChart({ series, labels, height = 300, format = moneyShort, markers = [] }) {
   const id = 'ch' + (++seq);
-  registry.set(id, { series, labels, height, format, zoom: 1, geom: null, lastW: 0 });
+  registry.set(id, { series, labels, height, format, markers, zoom: 1, geom: null, lastW: 0 });
   const legend = series.map(s =>
     `<span><span class="sw" style="background:${s.color}"></span>${s.label}</span>`).join('');
   return `
@@ -89,6 +90,18 @@ function svgFor(cfg, W, H) {
       pen = true;
     }
     if (d) g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.6" ${s.dash ? 'stroke-dasharray="5 4" stroke-width="1.2"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+  // 표시 지점(현금 입력으로 자본이 조정된 날) — 세로 점선 + 위쪽 라벨
+  for (const mk of (cfg.markers || [])) {
+    const i = cfg.labels.indexOf(mk.date);
+    if (i < 0) continue;
+    const mx = gx(G, i);
+    g += `<line x1="${mx.toFixed(1)}" y1="${G.padT}" x2="${mx.toFixed(1)}" y2="${H - G.padB}" `
+       + `stroke="currentColor" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="3 3"/>`;
+    const anchor = mx > W - 90 ? 'end' : 'start';
+    const tx = anchor === 'end' ? mx - 4 : mx + 4;
+    g += `<text x="${tx.toFixed(1)}" y="${G.padT + 10}" text-anchor="${anchor}" font-size="10.5" `
+       + `fill="currentColor" fill-opacity="0.7">${mk.label}</text>`;
   }
   g += `<g class="hoverlayer"></g>`;
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block" role="img">${g}</svg>`;

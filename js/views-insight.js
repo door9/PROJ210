@@ -29,8 +29,12 @@ function vWorlds() {
   const dep = w.deposits[li];
   const best = Math.max(...rows.map(r => r[1]));
 
+  // 현금 입력으로 자본이 한 번에 조정된 지점 — 그래프에 표시하고 아래에 이유를 적는다.
+  // (안 적으면 투입 원금 선이 이유 없이 절벽처럼 꺾여 보여 "왜 이러지?"가 된다.)
+  const adj = (w.cashAdj || []).filter(a => Math.abs(a.amtKRW) >= 10000);
   const chart = lineChart({
     labels: w.dates,
+    markers: adj.map(a => ({ date: a.date, label: `${a.date.slice(5).replace('-', '.')} 현금 반영` })),
     format: v => fmtMoney(v),   // 툴팁엔 정확한 금액(축 눈금은 축약)
     series: [
       { label: '실제의 나', color: C.actual, values: w.actual },
@@ -44,7 +48,20 @@ function vWorlds() {
   return `
     <div class="view-title">만약</div>
     <p class="view-desc">같은 돈으로 다르게 했다면. 계좌 잔고는 누구나 보지만, 대안과의 차이는 아무도 보여주지 않습니다.</p>
-    <div class="card">${chart}</div>
+    <div class="card">${chart}
+      ${adj.length ? `<div class="notice" style="margin:10px 0 0;">
+        <b>투입 원금이 계단처럼 꺾이는 지점이 있습니다 — 이유는 이렇습니다.</b><br>
+        ${adj.map(a => {
+          const out = a.amtKRW < 0;
+          return `· <b>${esc(a.date)}</b> 입력하신 현금 잔액이 앱 장부보다 ${out ? '적어' : '많아'},
+            <b class="${pctClass(a.amtKRW)}">${fmtMoney(Math.abs(a.amtKRW))}</b>을
+            ${out ? '펀드 밖으로 나간 돈(회수)' : '새로 넣은 돈(투입)'}으로 반영했습니다.`;
+        }).join('<br>')}
+        <br><span class="small">앱은 매도 대금을 장부에 쌓아 두는데(pool), 실제 잔액이 그보다 적으면
+        그 차액은 <b>펀드 밖으로 나간 것</b>으로 봅니다 — 다른 곳에 썼든 인출했든 이 펀드에서는 빠진 돈이니까요.
+        금액은 맞고, 여러 시점에 걸쳐 나간 돈이 <b>현금을 입력한 날 한 번에</b> 반영돼 계단이 가팔라 보일 뿐입니다.</span>
+      </div>` : ''}
+    </div>
     <div class="card">
       <h3>현재 가치 (투입 원금 ${fmtMoney(dep)})</h3>
       <div class="tbl-wrap"><table class="tbl">
