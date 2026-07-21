@@ -3,7 +3,7 @@ import { state, saveNow, toast, openModal, closeModal, confirmModal, registerVie
 import * as Store from './store.js';
 import * as P from './prices.js';
 import * as E from './engine.js';
-import { uid, todayStr, esc, fmtMoney, moneyKorean, fmtPct, fmtQty, fmtFx, pctClass, quarterOf } from './util.js';
+import { uid, todayStr, esc, fmtMoney, fmtPct, fmtQty, fmtFx, pctClass, quarterOf } from './util.js';
 import * as Dbx from './dropbox.js';
 import * as Lock from './lock.js';
 import { sparkline, lineChart, bindCharts } from './chart.js';
@@ -157,9 +157,9 @@ function vHome() {
       </div>
     </a>` : ''}
     ${w ? `<div class="kpis">
-      <div class="kpi"><div class="k">코스피만 샀다면</div><div class="v">${moneyKorean(w.kospi[li])}</div><div class="s ${pctClass(w.kospi[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.kospi[li] - w.actual[li])}</div></div>
-      <div class="kpi"><div class="k">S&P500만 샀다면</div><div class="v">${moneyKorean(w.sp500[li])}</div><div class="s ${pctClass(w.sp500[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.sp500[li] - w.actual[li])}</div></div>
-      <div class="kpi"><div class="k">예금만 했다면 (연 ${w.rate}%)</div><div class="v">${moneyKorean(w.bank[li])}</div><div class="s ${pctClass(w.bank[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.bank[li] - w.actual[li])}</div></div>
+      <div class="kpi"><div class="k">코스피만 샀다면</div><div class="v">${fmtMoney(w.kospi[li])}</div><div class="s ${pctClass(w.kospi[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.kospi[li] - w.actual[li])}</div></div>
+      <div class="kpi"><div class="k">S&P500만 샀다면</div><div class="v">${fmtMoney(w.sp500[li])}</div><div class="s ${pctClass(w.sp500[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.sp500[li] - w.actual[li])}</div></div>
+      <div class="kpi"><div class="k">예금만 했다면 (연 ${w.rate}%)</div><div class="v">${fmtMoney(w.bank[li])}</div><div class="s ${pctClass(w.bank[li] - w.actual[li])}">실제 대비 ${fmtMoney(w.bank[li] - w.actual[li])}</div></div>
     </div>
     <p class="small muted" style="margin:6px 2px 14px;">자세한 곡선은 <a href="#/worlds">만약</a>에서.</p>` : ''}
     <div class="card">
