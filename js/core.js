@@ -225,22 +225,33 @@ export async function triggerRefresh() {
   if (!state.settings.ghPat || !state.settings.ghRepo) { toast('설정에서 시세 저장소를 먼저 연결하세요'); return; }
   refreshing = true;
   setRefreshingUI(true);
-  toast('시세 갱신을 요청했습니다 — 잠시 뒤 반영됩니다');
+  toast('시세 갱신을 요청했습니다 — 1~2분 걸립니다');
+
+  const before = P.updatedAt()?.getTime() || 0;
+  const done = (msg, ms) => { refreshing = false; setRefreshingUI(false); toast(msg, ms); };
+
   try {
     await P.forceRefresh(state.settings);
-    // 워크플로가 끝날 즈음 다시 불러와 화면 갱신
-    setTimeout(async () => {
+    // 워크플로는 종목 수에 따라 1~3분 걸린다(87개 기준 대략 100초). 전엔 40초 뒤 한 번만
+    // 다시 읽어서, 아직 안 끝난 옛 데이터를 보고 "갱신했습니다"라고 말했다 — 눌러도 그대로인
+    // 것처럼 보인 진짜 원인. 이제 끝날 때까지 주기적으로 확인하고, 실제로 바뀌었을 때만 알린다.
+    const deadline = Date.now() + 240000;   // 최대 4분
+    const poll = async () => {
       await P.load(state.settings);
+      if ((P.updatedAt()?.getTime() || 0) > before) {   // 저장소가 실제로 새로 쌓였다
+        refreshPriceStatus();
+        renderIfIdle();   // 그 사이 사용자가 뭔가 쓰고 있으면 화면을 갈아엎지 않는다
+        done('시세를 갱신했습니다');
+        return;
+      }
+      if (Date.now() < deadline) { setTimeout(poll, 15000); return; }
       refreshPriceStatus();
-      renderIfIdle();   // 그 사이 사용자가 뭔가 쓰고 있으면 화면을 갈아엎지 않는다
-      refreshing = false;
-      setRefreshingUI(false);
-      toast('시세를 갱신했습니다');
-    }, 40000);
+      renderIfIdle();
+      done('아직 반영되지 않았습니다 — 잠시 뒤 앱을 다시 열어 확인하세요', 4200);
+    };
+    setTimeout(poll, 20000);
   } catch (e) {
-    refreshing = false;
-    setRefreshingUI(false);
-    toast('갱신 실패: ' + (e && e.message || e));
+    done('갱신 실패: ' + (e && e.message || e), 4200);
   }
 }
 

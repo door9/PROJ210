@@ -14,6 +14,9 @@ function safeName(symbol) {
 // ---- GitHub 비공개 저장소 접근 ----
 function ghReady(cfg) { return !!(cfg && cfg.ghPat && cfg.ghRepo); }
 
+// cache:'no-cache' = '캐시를 쓰지 마라'가 아니라 '쓰기 전에 반드시 서버에 확인하라'는 뜻.
+// 내용이 그대로면 304(본문 없음)라 공짜에 가깝고, 바뀌었으면 200으로 새 내용이 온다.
+// 87개 파일을 매번 통째로 받지 않으면서도 최신을 보장하므로 no-store보다 이쪽이 맞다.
 async function ghGet(cfg, path, raw = true) {
   const r = await fetch(`https://api.github.com/repos/${cfg.ghRepo}/contents/${path}`, {
     headers: {
