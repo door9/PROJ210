@@ -164,6 +164,39 @@ export function frozenSince(sym) {
   return map.get(sym)?.frozenSince || null;
 }
 
+// ---- 자가 치유: '오늘 마감 종가가 나와 있어야 하는데 없는' 시장 찾기 ------------------
+// 서버 크론이 밀렸을 때, 앱이 열린 김에 서버 갱신을 한 번 요청하기 위한 판정.
+// 휴장일 캘린더는 서버 스크립트만 안다 → 여기선 요일·시각만 본다. 휴장일엔 오탐이 나지만
+// 워크플로가 '휴장'으로 몇 초 만에 끝나므로 비용이 없다.
+const MKT_TZ = { kr: 'Asia/Seoul', us: 'America/New_York' };
+const MKT_AFTER = { kr: 15 * 60 + 40, us: 16 * 60 + 10 }; // 마감 +10분 (그 시장 현지 시각, 분)
+
+// 그 시간대의 현재 날짜·시각·요일. Intl이 서머타임을 알아서 처리한다(미국 16:00 마감 판정용).
+function nowIn(tz, now) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23', weekday: 'short',
+  }).formatToParts(now).map(p => [p.type, p.value]));
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    minutes: Number(parts.hour) * 60 + Number(parts.minute),
+    weekday: parts.weekday,
+  };
+}
+
+// now·lastClose를 주입할 수 있게 한 것은 시험용 — 실제 호출은 인자 없이 한다.
+export function staleClosedMarkets({ now = new Date(), lastClose = meta?.lastClose || {} } = {}) {
+  const out = [];
+  for (const mkt of ['kr', 'us']) {
+    const n = nowIn(MKT_TZ[mkt], now);
+    if (n.weekday === 'Sat' || n.weekday === 'Sun') continue;
+    if (n.minutes < MKT_AFTER[mkt]) continue;   // 아직 그 시장 마감 전
+    if (lastClose[mkt] === n.date) continue;    // 오늘 종가는 이미 받아 뒀다
+    out.push({ mkt, day: n.date });
+  }
+  return out;
+}
+
 // dates에서 target 이하의 마지막 인덱스 (이진 탐색)
 function idxOn(d, target) {
   const a = d.dates;

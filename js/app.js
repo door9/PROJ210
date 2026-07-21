@@ -4,7 +4,7 @@ import * as Dbx from './dropbox.js';
 import * as Sync from './sync.js';
 import * as Store from './store.js';
 import * as Lock from './lock.js';
-import { state, render, renderIfIdle, refreshPriceStatus, initTopbar, toast } from './core.js';
+import { state, render, renderIfIdle, refreshPriceStatus, initTopbar, toast, triggerRefresh } from './core.js';
 import './views-main.js';
 import './views-insight.js';
 import './views-write.js';
@@ -39,9 +39,25 @@ async function init() {
   render();
   window.addEventListener('hashchange', render);
   if (justConnected) toast('Dropbox에 연결됐습니다. 이제 기기 간 동기화됩니다.');
-  // 시세 갱신은 앱이 요청하지 않는다 — 저장소 크론이 한국·미국 마감 직후 하루 한 번씩
-  // 미리 받아 두므로, 앱은 이미 갱신된 파일을 읽기만 하면 된다(기다릴 일이 없다).
-  // 지금 당장 받고 싶으면 상단바의 갱신 버튼.
+
+  // 시세는 저장소 크론이 각 시장 마감 직후 미리 받아 둔다 — 앱은 읽기만 한다.
+  // 다만 GitHub 예약은 정시 보장이 없어 밀리는 날이 있다(실측 최대 3시간). 그런 날 앱을 열면
+  // '오늘 종가가 나와 있어야 하는데 없다'를 감지해 서버 갱신을 한 번 요청해 둔다.
+  // 기기·시장·날짜당 1회만(localStorage). 휴장일 오탐은 서버가 몇 초 만에 걸러내므로 무해.
+  try {
+    const stale = P.staleClosedMarkets();
+    if (stale.length && state.settings.ghPat && state.settings.ghRepo) {
+      const K = 'onefund.autoFetch';
+      let done = {};
+      try { done = JSON.parse(localStorage.getItem(K) || '{}'); } catch { /* 손상 무시 */ }
+      const need = stale.filter(s => done[s.mkt] !== s.day);
+      if (need.length) {
+        for (const s of need) done[s.mkt] = s.day;
+        localStorage.setItem(K, JSON.stringify(done));
+        triggerRefresh({ quiet: true });
+      }
+    }
+  } catch { /* 자가 치유는 실패해도 조용히 — 다음 크론이 어차피 받는다 */ }
 }
 
 // 저장된 데이터의 종목명을 시세의 자동 이름(한국=한글/미국=영문)으로 맞춘다.

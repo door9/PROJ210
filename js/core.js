@@ -220,12 +220,15 @@ function setRefreshingUI(on) {
   btn.classList.toggle('spinning', on);
   btn.disabled = on;
 }
-export async function triggerRefresh() {
+// quiet: 사용자가 누른 게 아니라 앱이 스스로 부른 경우(오늘 종가가 아직 없을 때의 자가 치유).
+// 클릭 핸들러로 불리면 opts가 이벤트 객체라 quiet는 자연히 false가 된다.
+export async function triggerRefresh(opts = {}) {
+  const quiet = opts && opts.quiet === true;
   if (refreshing) return;
-  if (!state.settings.ghPat || !state.settings.ghRepo) { toast('설정에서 시세 저장소를 먼저 연결하세요'); return; }
+  if (!state.settings.ghPat || !state.settings.ghRepo) { if (!quiet) toast('설정에서 시세 저장소를 먼저 연결하세요'); return; }
   refreshing = true;
   setRefreshingUI(true);
-  toast('시세 갱신을 요청했습니다 — 1~2분 걸립니다');
+  toast(quiet ? '오늘 종가를 받아오는 중 — 완료되면 자동 반영됩니다' : '시세 갱신을 요청했습니다 — 1~2분 걸립니다', 4200);
 
   const before = P.updatedAt()?.getTime() || 0;
   const done = (msg, ms) => { refreshing = false; setRefreshingUI(false); toast(msg, ms); };
@@ -241,12 +244,15 @@ export async function triggerRefresh() {
       if ((P.updatedAt()?.getTime() || 0) > before) {   // 저장소가 실제로 새로 쌓였다
         refreshPriceStatus();
         renderIfIdle();   // 그 사이 사용자가 뭔가 쓰고 있으면 화면을 갈아엎지 않는다
-        done('시세를 갱신했습니다');
+        done(quiet ? '오늘 종가가 반영됐습니다' : '시세를 갱신했습니다');
         return;
       }
       if (Date.now() < deadline) { setTimeout(poll, 15000); return; }
       refreshPriceStatus();
       renderIfIdle();
+      // quiet(자가 치유)는 사용자가 부른 게 아니다 — 휴장일이면 서버가 몇 초 만에 건너뛰어
+      // updatedAt이 안 바뀌므로 여기로 온다. 이때 경고를 띄우면 헛알림이 되니 조용히 끝낸다.
+      if (quiet) { refreshing = false; setRefreshingUI(false); return; }
       done('아직 반영되지 않았습니다 — 잠시 뒤 앱을 다시 열어 확인하세요', 4200);
     };
     setTimeout(poll, 20000);
