@@ -72,11 +72,12 @@ export const ICONS = {
   funds: svg('<rect x="3.5" y="8.5" width="12" height="12" rx="2"/><path d="M7.5 8.5V5.5a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2h-3"/>'),
 };
 
+// 모바일 하단 탭. 순서는 상단바 메뉴와 같게 유지한다(일지가 관심보다 앞).
 export const NAV = [
   { id: 'home', label: '홈', ico: ICONS.home },
   { id: 'trades', label: '기록', ico: ICONS.trades },
-  { id: 'watch', label: '관심', ico: ICONS.watch },
   { id: 'diary', label: '일지', ico: ICONS.diary },
+  { id: 'watch', label: '관심', ico: ICONS.watch },
   { id: 'more', label: '더보기', ico: ICONS.more },
 ];
 // 순서 = 왼쪽부터 표시. 넘치면 뒤쪽부터 '더보기'로 접히므로, 자주 쓰는 것을 앞에 둔다.
