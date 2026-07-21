@@ -79,9 +79,10 @@ export const NAV = [
   { id: 'diary', label: '일지', ico: ICONS.diary },
   { id: 'more', label: '더보기', ico: ICONS.more },
 ];
+// 순서 = 왼쪽부터 표시. 넘치면 뒤쪽부터 '더보기'로 접히므로, 자주 쓰는 것을 앞에 둔다.
 export const NAV_DESKTOP = [
-  ['home', '홈'], ['trades', '기록'], ['watch', '관심'], ['returns', '수익'], ['worlds', '만약'], ['actions', '회상'],
-  ['diary', '일지'], ['cost', '비용'], ['quotes', '글귀'], ['letters', '서한'], ['ai', '복기'], ['funds', '2ⁿ'], ['settings', '설정'],
+  ['home', '홈'], ['trades', '기록'], ['diary', '일지'], ['returns', '수익'], ['cost', '비용'], ['worlds', '만약'],
+  ['actions', '회상'], ['watch', '관심'], ['quotes', '글귀'], ['letters', '서한'], ['ai', '복기'], ['funds', '2ⁿ'], ['settings', '설정'],
 ];
 
 export function currentRoute() {
