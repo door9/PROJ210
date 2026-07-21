@@ -216,6 +216,23 @@ export function recentAdj(sym, n = 120) {
   return d.closes.slice(-n).map(r => r[2]).filter(v => v != null && isFinite(v));
 }
 
+// from 이후의 (날짜, 종가) 계열 — 종목 상세의 주가 차트용.
+// 실제 종가(수정 전)를 쓴다: 툴팁의 '당시 주가'와 내가 기록한 매매가가 맞아떨어져야 하므로.
+// 대신 그 구간에 액면분할이 있으면 선이 뚝 끊긴다 → split 플래그로 알려 화면에서 안내한다.
+export function seriesFrom(sym, from = null) {
+  const d = map.get(sym);
+  if (!d || !d.closes.length) return { labels: [], values: [], split: false };
+  const rows = d.closes.filter(r => (!from || r[0] >= from) && r[1] != null && isFinite(r[1]));
+  // 원종가/수정종가 비율이 구간 안에서 크게 달라지면 분할·병합이 있었다는 뜻
+  let split = false;
+  if (rows.length > 1) {
+    const ratio = r => (r[2] && r[1]) ? r[2] / r[1] : null;
+    const a = ratio(rows[0]), b = ratio(rows[rows.length - 1]);
+    if (a && b && Math.abs(Math.log(b / a)) > Math.log(1.5)) split = true;
+  }
+  return { labels: rows.map(r => r[0]), values: rows.map(r => r[1]), split };
+}
+
 // 배당·분할 반영 성장배수. to 생략 시 최신까지.
 export function growth(sym, from, to = null) {
   const a = adjOn(sym, from);

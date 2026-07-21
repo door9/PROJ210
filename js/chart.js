@@ -33,10 +33,12 @@ export function sparkline(values, { w = 76, h = 24, pad = 2 } = {}) {
 }
 
 // 셸만 반환한다(툴바·스크롤 영역·툴팁·범례). 실제 SVG는 bindCharts에서 그린다.
-// markers: [{date, label}] — 그 날짜에 세로 점선과 라벨을 찍는다(자본이 한 번에 조정된 지점 표시용).
-export function lineChart({ series, labels, height = 300, format = moneyShort, markers = [] }) {
+// markers: [{date, label}] — 그 날짜에 세로 점선과 라벨(자본이 한 번에 조정된 지점 표시용).
+// points:  [{date, color, label}] — 선 위 그 지점에 점을 찍고 툴팁에 설명을 덧붙인다(매수·매도 표시용).
+//          매매가 많은 종목은 세로선이 도배되므로 점으로 찍는다.
+export function lineChart({ series, labels, height = 300, format = moneyShort, markers = [], points = [] }) {
   const id = 'ch' + (++seq);
-  registry.set(id, { series, labels, height, format, markers, zoom: 1, geom: null, lastW: 0 });
+  registry.set(id, { series, labels, height, format, markers, points, zoom: 1, geom: null, lastW: 0 });
   const legend = series.map(s =>
     `<span><span class="sw" style="background:${s.color}"></span>${s.label}</span>`).join('');
   return `
@@ -103,6 +105,18 @@ function svgFor(cfg, W, H) {
     g += `<text x="${tx.toFixed(1)}" y="${G.padT + 10}" text-anchor="${anchor}" font-size="10.5" `
        + `fill="currentColor" fill-opacity="0.7">${mk.label}</text>`;
   }
+  // 매매 지점 — 첫 계열 값 위에 점을 찍는다
+  if ((cfg.points || []).length) {
+    const base = cfg.series[0];
+    for (const p of cfg.points) {
+      const i = cfg.labels.indexOf(p.date);
+      if (i < 0) continue;
+      const v = base?.values[i];
+      if (v == null || !isFinite(v)) continue;
+      g += `<circle cx="${gx(G, i).toFixed(1)}" cy="${gy(G, v).toFixed(1)}" r="3" `
+         + `fill="${p.color}" stroke="var(--card)" stroke-width="1.2"/>`;
+    }
+  }
   g += `<g class="hoverlayer"></g>`;
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block" role="img">${g}</svg>`;
 }
@@ -157,6 +171,12 @@ function initBox(box) {
     }
     const hl = svg.querySelector('.hoverlayer');
     if (hl) hl.innerHTML = ov;
+    // 그날 매매가 있었으면 툴팁에 함께 (여러 건이면 모두)
+    for (const p of (cfg.points || [])) {
+      if (p.date !== cfg.labels[i]) continue;
+      rows.push(`<div class="tip-row"><span class="sw" style="background:${p.color}"></span>`
+        + `<span class="tip-nm">${p.label}</span></div>`);
+    }
     tip.innerHTML = `<div class="tip-date">${cfg.labels[i] || ''}</div>${rows.join('')}`;
     tip.hidden = false;
     const boxRect = box.getBoundingClientRect();

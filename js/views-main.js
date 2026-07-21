@@ -6,7 +6,7 @@ import * as E from './engine.js';
 import { uid, todayStr, esc, fmtMoney, moneyKorean, fmtPct, fmtQty, fmtFx, pctClass, quarterOf } from './util.js';
 import * as Dbx from './dropbox.js';
 import * as Lock from './lock.js';
-import { sparkline } from './chart.js';
+import { sparkline, lineChart, bindCharts } from './chart.js';
 
 // ---------- 홈 ----------
 // 현금 잔액 입력 — 홈 표의 현금 행에서 바로 연다. 설정의 '현금 잔액' 카드와 같은 일을 하며
@@ -301,14 +301,37 @@ function vSymbol(symbol) {
 
   const items = symTrades.map(t => tradeItemHtml(t, retBySell.get(t.id), { link: false })).join('');
 
+  // 주가 차트 — 첫 매수일부터 지금까지. 선에 커서를 올리면 그날 종가가, 매매한 날엔 그 내역도 뜬다.
+  const firstBuyDate = symTrades.length ? symTrades[symTrades.length - 1].date : null;
+  const ser = P.seriesFrom(symbol, firstBuyDate);
+  const priceChart = ser.values.length > 1 ? lineChart({
+    labels: ser.labels,
+    height: 260,
+    format: v => fmtMoney(v, cur),
+    series: [{ label: '종가', color: 'var(--accent)', values: ser.values }],
+    points: symTrades.map(t => ({
+      date: t.date,
+      color: t.side === 'buy' ? 'var(--up)' : 'var(--down)',
+      label: `${t.side === 'buy' ? '매수' : '매도'} ${fmtQty(t.qty)}주 @ ${fmtMoney(t.price, cur)}`,
+    })),
+  }) : '';
+
   return `
     <div class="view-title">${esc(name)}</div>
     <p class="view-desc">${esc(symbol)}${last ? ` · 현재가 ${fmtMoney(last.close, cur)} <span class="muted">(${P.lastStamp(symbol)})</span>` : ' · 시세 없음'}${frozen ? ` <span class="tag warn">${frozen}부터 시세 멈춤</span>` : ''}</p>
+    ${priceChart ? `<div class="card">
+      <h3>주가 (${esc(firstBuyDate)} 첫 매수 이후)</h3>
+      ${priceChart}
+      <p class="hint">선 위에 커서를 올리면 <b>그날 날짜와 종가</b>가 보입니다. 점은 내가 매매한 날입니다
+      (<span class="up">●</span> 매수 / <span class="down">●</span> 매도) — 그 점에 올리면 수량·단가도 함께 뜹니다.
+      ${ser.split ? '<br><b>주의:</b> 이 구간에 액면분할·병합이 있어 선이 그 지점에서 끊겨 보입니다(실제 종가 그대로 그리기 때문).' : ''}</p>
+    </div>` : ''}
     <div class="card"><h3>현황</h3>${summary}</div>
     <div class="card"><h3>매매 기록 (${symTrades.length}건)</h3>${items}</div>
     <div class="btn-row"><button class="btn" data-act="back">← 뒤로</button></div>`;
 }
 vSymbol.bind_ = (root) => {
+  bindCharts(root);
   bindTradeItems(root);
   // 온 곳(기록·홈 등)으로 되돌아간다. 히스토리가 없으면 홈.
   root.querySelector('[data-act=back]')?.addEventListener('click', () => {
