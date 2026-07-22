@@ -244,12 +244,18 @@ export function firstDate(sym) {
   return d?.closes.length ? d.closes[0][0] : null;
 }
 
-// 최근 n개 수정종가 (보유 종목 표의 추세 스파크라인용).
+// 최근 months개월(달력 기준)의 수정종가 (보유 종목 표의 추세 스파크라인용). 기본 1년.
+// 개수(예전 120봉)가 아니라 날짜로 자른다 — "최근 1년"이 사용자에게 더 명확하다.
+// 마지막 봉 날짜를 기준으로 하므로 거래정지·상장폐지 종목도 마지막 1년치가 나온다.
 // 수정종가를 쓰는 이유: 액면분할·병합이 있으면 원종가는 그 지점에서 뚝 끊겨 가짜 급락처럼 보인다.
-export function recentAdj(sym, n = 120) {
+export function recentAdj(sym, months = 12) {
   const d = map.get(sym);
   if (!d || !d.closes.length) return [];
-  return d.closes.slice(-n).map(r => r[2]).filter(v => v != null && isFinite(v));
+  const last = d.closes[d.closes.length - 1][0];              // 'YYYY-MM-DD'
+  const [y, m, day] = last.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1 - months, day));
+  const from = dt.toISOString().slice(0, 10);
+  return d.closes.filter(r => r[0] >= from).map(r => r[2]).filter(v => v != null && isFinite(v));
 }
 
 // from 이후의 (날짜, 종가) 계열 — 종목 상세의 주가 차트용.
