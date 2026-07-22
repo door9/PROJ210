@@ -346,6 +346,52 @@ function emotionChips(selected = []) {
     `<span class="chip ${selected.includes(e) ? 'on' : ''}" data-emo="${esc(e)}">${esc(e)}</span>`).join('');
 }
 
+// 종목 입력칸의 추천 목록 순서. 예전엔 시세 저장소 등록 순서(사실상 무순서)라 찾기 어려웠다.
+//  1) 지금 보유 중인 종목 — 매입액(원화 환산) 많은 순
+//  2) 이미 판 종목 — 전량 매도가 최근인 순
+//  3) 매매한 적 없는 등록 종목 — 이름순 (관심만 등록해 둔 것)
+// 브라우저 datalist는 사용자가 입력하면 자체 필터링만 하고 순서는 이 배열을 그대로 따른다.
+function symbolChoices() {
+  const pf = E.portfolio(state);
+  const held = new Map(pf.rows.map(r => [r.symbol, r]));
+
+  // 종목별 마지막 매도일 (보유 중이 아니면 그게 곧 전량 매도 시점)
+  const lastSell = new Map();
+  for (const t of E.sortedTrades(state)) {
+    if (t.side === 'sell') lastSell.set(t.symbol, t.date);
+  }
+  // 매매 기록이 있는 종목 + 시세에 등록된 종목을 모두 후보로
+  const names = new Map();
+  for (const t of state.trades) if (t.name) names.set(t.symbol, t.name);
+  const cand = new Set([
+    ...state.trades.map(t => t.symbol),
+    ...P.symbols().filter(s => !s.startsWith('^') && s !== 'KRW=X'),
+  ]);
+
+  const rows = [...cand].map(sym => {
+    const h = held.get(sym);
+    const name = P.info(sym)?.name || names.get(sym) || '';
+    return {
+      symbol: sym,
+      name,
+      rank: h ? 0 : (lastSell.has(sym) ? 1 : 2),
+      costKRW: h ? (h.costKRW || 0) : 0,     // 보유분 매입액(원화)
+      soldAt: lastSell.get(sym) || '',
+      label: h
+        ? `${name} — 보유 ${fmtQty(h.qty)}주 · 매입 ${fmtMoney(h.cost, h.cur)}`
+        : (lastSell.has(sym) ? `${name} — ${lastSell.get(sym)} 전량 매도` : name),
+    };
+  });
+
+  rows.sort((a, b) => {
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    if (a.rank === 0) return b.costKRW - a.costKRW;          // 매입액 큰 순
+    if (a.rank === 1) return a.soldAt < b.soldAt ? 1 : -1;   // 최근 매도 순
+    return (a.name || a.symbol).localeCompare(b.name || b.symbol, 'ko');
+  });
+  return rows;
+}
+
 export function openTradeForm(side, existing = null) {
   const isBuy = side === 'buy';
   const today = todayStr();
@@ -356,15 +402,17 @@ export function openTradeForm(side, existing = null) {
   if (!isBuy) {
     const pf = E.portfolio(state);
     if (!pf.rows.length && !existing) { toast('보유 종목이 없습니다. 먼저 매수를 기록하세요.'); return; }
-    sellOptions = pf.rows.map(r =>
-      `<option value="${esc(r.symbol)}" ${t.symbol === r.symbol ? 'selected' : ''}>${esc(r.name)} (${esc(r.symbol)}) — 보유 ${fmtQty(r.qty)}주</option>`).join('');
+    // 매입액(원화) 많은 순 — 종목 추천 목록(symbolChoices)과 같은 기준으로 맞춘다.
+    const bySize = [...pf.rows].sort((a, b) => (b.costKRW || 0) - (a.costKRW || 0));
+    sellOptions = bySize.map(r =>
+      `<option value="${esc(r.symbol)}" ${t.symbol === r.symbol ? 'selected' : ''}>${esc(r.name)} (${esc(r.symbol)}) — 보유 ${fmtQty(r.qty)}주 · 매입 ${fmtMoney(r.cost, r.cur)}</option>`).join('');
     if (existing && !pf.rows.some(r => r.symbol === t.symbol)) {
       sellOptions += `<option value="${esc(t.symbol)}" selected>${esc(t.name || t.symbol)}</option>`;
     }
   }
 
-  const knownList = P.symbols().filter(s => !s.startsWith('^') && s !== 'KRW=X')
-    .map(s => `<option value="${esc(s)}">${esc(P.info(s)?.name || '')}</option>`).join('');
+  const knownList = symbolChoices()
+    .map(o => `<option value="${esc(o.symbol)}">${esc(o.label)}</option>`).join('');
 
   const manualPrinciples = state.principles.filter(p => p.active && p.kind === 'manual');
 
