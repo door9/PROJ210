@@ -546,7 +546,7 @@ function vCost() {
   if (!ln) {
     return `
       <div class="view-title">투자 비용</div>
-      <p class="view-desc">빌린 돈으로 투자한다면 그 이자도 엄연한 비용입니다. 수익이 이자를 넘어야 레버리지가 값을 합니다.</p>
+      <p class="view-desc">빌린 돈으로 투자한다면 그 이자도 엄연한 비용입니다. <b>빌린 돈이 이자보다 더 벌어야</b> 레버리지가 값을 합니다.</p>
       <div class="card">
         <h3>대출 계좌가 없습니다</h3>
         <p class="small muted" style="margin:6px 0 0;">마이너스통장·신용대출 등 투자 자금을 빌린 계좌를 등록하세요. 계좌가 여러 개면 각각 등록하면 됩니다. 매달 나가는 이자와 지금까지 쌓인 비용, 수익이 그 비용을 넘고 있는지를 합산해 보여줍니다.</p>
@@ -575,7 +575,7 @@ function vCost() {
 
   return `
     <div class="view-title">투자 비용</div>
-    <p class="view-desc">빌린 돈으로 투자한다면 그 이자도 엄연한 비용입니다. 수익이 이자를 넘어야 레버리지가 값을 합니다.</p>
+    <p class="view-desc">빌린 돈으로 투자한다면 그 이자도 엄연한 비용입니다. <b>빌린 돈이 이자보다 더 벌어야</b> 레버리지가 값을 합니다.</p>
 
     <div class="card hero">
       <div class="row"><span>대출 ${ln.openAccts.length}건 · 총 잔액 ${fmtMoney(ln.balance)} · 평균 연 ${ln.wRate.toFixed(2)}%</span></div>
@@ -593,13 +593,24 @@ function vCost() {
     <div class="card">
       <h3>레버리지가 값을 하고 있나</h3>
       <p class="small" style="margin:4px 0 0;">
-        펀드 수익률을 연으로 환산하면 약 <b class="${pctClass(ln.annualized)}">${fmtPct(ln.annualized)}</b>,
-        평균 대출 금리는 <b>${ln.wRate.toFixed(2)}%</b>입니다.
-        ${ln.beatsHurdle
-          ? '→ 빌린 돈이 이자보다 <b class="up">더 벌고 있습니다</b>. 레버리지가 값을 하는 중입니다.'
-          : '→ 아직 <b class="down">이자를 넘지 못하고</b> 있습니다. 빌린 돈이 이자만큼도 못 벌면 레버리지는 손해를 키웁니다.'}
+        <b>지금까지 (확정된 금액)</b> —
+        ${ln.netProfit >= 0
+          ? `누적 이자 ${fmtMoney(ln.cumulative)}를 내고도 <b class="up">${fmtMoney(ln.netProfit)}</b>이 남았습니다.`
+          : `번 돈이 누적 이자 ${fmtMoney(ln.cumulative)}에 <b class="down">${fmtMoney(Math.abs(ln.netProfit))}</b> 모자랍니다.`}
       </p>
-      <p class="hint">연환산 수익률은 펀드 전체 수익을 운용 기간으로 나눈 추정치라, 기간이 짧으면 크게 출렁입니다. 확정된 값은 위의 누적 이자·실질 손익입니다.</p>
+      <p class="small" style="margin:6px 0 0;">
+        <b>앞으로의 속도 (비율)</b> — 펀드 수익률을 연으로 환산하면 약 <b class="${pctClass(ln.annualized)}">${fmtPct(ln.annualized)}</b>,
+        평균 대출 금리는 <b>${ln.wRate.toFixed(2)}%</b>.
+        ${ln.beatsHurdle
+          ? `수익률이 금리를 <b class="up">${(ln.annualized * 100 - ln.wRate).toFixed(2)}%p 앞섭니다</b> —
+             이 속도가 이어지면 빌린 돈이 제 몫을 합니다.`
+          : `수익률이 금리에 <b class="down">${(ln.wRate - ln.annualized * 100).toFixed(2)}%p 못 미칩니다</b> —
+             이 속도가 이어지면 빌린 돈은 이자값을 못 하게 됩니다.`}
+      </p>
+      <p class="hint">두 줄은 <b>서로 다른 것을 잽니다.</b> 위는 이미 확정된 <b>금액</b>(자기 돈까지 합쳐 번 돈에서 이자를 뺀 것),
+      아래는 <b>비율</b>(빌린 돈 1원이 이자보다 더 버는가)입니다. 그래서 <b>“이자를 내고도 남았는데 수익률은 금리보다 낮은”</b>
+      상태가 함께 나올 수 있습니다 — 자기 돈이 많을수록 금액은 커지지만, 빌린 돈의 값어치는 비율로만 드러나기 때문입니다.<br>
+      연환산 수익률은 펀드 전체 수익을 운용 기간으로 나눈 추정치라 기간이 짧으면 크게 출렁입니다.</p>
     </div>` : ''}
 
     <div class="card">
