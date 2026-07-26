@@ -139,9 +139,9 @@ function vHome() {
       <div class="row"><span class="muted small">보유 평가액 (${heroNote})</span></div>
       <div class="big">${fmtMoney(pf.totalKRW)}</div>
       <dl class="hero-facts">
-        <dt>투입 원금</dt><dd>${depStr}</dd>
-        <dt>평가 금액</dt><dd>${valStr}</dd>
-        <dt>수익 결산</dt><dd>${retParts.join(' · ') || '–'}</dd>
+        <dt>원금</dt><dd>${depStr}</dd>
+        <dt>평가</dt><dd>${valStr}</dd>
+        <dt>결산</dt><dd>${retParts.join(' · ') || '–'}</dd>
       </dl>
     </div>
     ${ln ? `<a href="#/cost" class="card loan-card" style="display:block; text-decoration:none; color:inherit;">
