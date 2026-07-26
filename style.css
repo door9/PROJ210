@@ -137,6 +137,9 @@ main#view {
 .kpi .k { color: var(--sub); font-size: 12px; }
 .kpi .v { font-size: 17px; font-weight: 700; margin-top: 2px; }
 .kpi .s { font-size: 12px; color: var(--sub); margin-top: 2px; }
+/* .kpi .s(특이도 0,0,2,0)가 .up/.down(0,0,1,0)을 덮으므로, 같은 층위에서 색을 되살린다 */
+.kpi .s.up { color: var(--up); }
+.kpi .s.down { color: var(--down); }
 
 /* 표 */
 table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
