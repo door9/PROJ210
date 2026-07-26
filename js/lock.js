@@ -48,7 +48,9 @@ export function showLock() {
           <div class="lock-logo">${ICONS.lock}</div>
           <div class="lock-title">PROJ210</div>
           <div class="lock-sub">PIN 번호를 입력하세요</div>
-          <input id="lock-pin" class="lock-input" type="password" inputmode="numeric" autocomplete="off" maxlength="12">
+          <input id="lock-pin" class="lock-input mask" type="text" inputmode="numeric" maxlength="12"
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                 data-form-type="other" data-lpignore="true" data-1p-ignore="true">
           <div id="lock-err" class="lock-err"></div>
           <button id="lock-ok" class="btn primary" style="width:100%;">확인</button>
           ${quoteHtml()}

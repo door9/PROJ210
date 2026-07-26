@@ -331,7 +331,8 @@ registerView('quotes', vQuotes);
 
 // PIN 설정/변경/해제 모달
 function openPinModal(mode) {
-  const pinField = (id, label) => `<label class="fld" style="margin-top:10px;">${label}<input id="${id}" type="password" inputmode="numeric" maxlength="12" autocomplete="off"></label>`;
+  // type="password"를 쓰지 않는 이유는 style.css의 .mask 주석 참고 (삼성패스 자동 입력 제안 차단)
+  const pinField = (id, label) => `<label class="fld" style="margin-top:10px;">${label}<input id="${id}" class="mask" type="text" inputmode="numeric" maxlength="12" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true"></label>`;
   const title = mode === 'set' ? 'PIN 설정' : mode === 'change' ? 'PIN 변경' : 'PIN 해제';
   const m = openModal(`
     <h2>${title}</h2>
