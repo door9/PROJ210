@@ -98,7 +98,9 @@ function vActions() {
   // 조회 조건 적용
   const { year, symbol } = actionsFilter;
   const keep = (date, sym) => (!year || date.slice(0, 4) === year) && (!symbol || sym === symbol);
-  const sellRows = ss.rows.filter(x => keep(x.r.sell.date, x.sym));
+  // 매도 목록은 최신순 — 방금 판 것이 가장 궁금하다. (replay가 주는 순서는 오래된 것부터)
+  const sellRows = ss.rows.filter(x => keep(x.r.sell.date, x.sym))
+    .sort((a, b) => a.r.sell.date < b.r.sell.date ? 1 : a.r.sell.date > b.r.sell.date ? -1 : 0);
   const adRows = ad.rows.filter(x => keep(x.t.date, x.t.symbol));
 
   // 조회 조건 UI — 연도·종목 목록은 실제 기록에서 뽑는다
