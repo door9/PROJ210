@@ -56,6 +56,13 @@ export function moneyKorean(v) {
   return (neg ? '-' : '') + eok.toLocaleString('ko-KR') + '억' + String(rest).padStart(4, '0') + '만원';
 }
 
+// 부호를 붙인 원화 정수(₩ 없이): +65,393,142 / -6,030,624 (색은 pctClass로 — 상승 빨강·하락 파랑)
+export function fmtSigned(v) {
+  if (v == null || isNaN(v)) return '–';
+  const n = Math.round(v);
+  return (n > 0 ? '+' : '') + n.toLocaleString('ko-KR');
+}
+
 export function fmtQty(v) {
   return v.toLocaleString('ko-KR', { maximumFractionDigits: 6 });
 }
