@@ -259,7 +259,9 @@ export function worlds(state, upto = null) {
   const contribs = capitalLedger(state, end).events;
 
   // 지수 세계의 매입 단위 미리 계산
-  const kUnits = [], sUnits = [];
+  // 지수(코스피·S&P)는 원종가로 가격수익만 본다. KO(코카콜라)는 실제로 살 수 있는 배당주라
+  // 배당까지 받고 재투자한 값이 "그 주식만 샀다면"의 정직한 답이므로 수정종가로 총수익을 본다.
+  const kUnits = [], sUnits = [], koUnits = [];
   for (const c of contribs) {
     const k = P.closeOn('^KS11', c.date);
     if (k) kUnits.push({ date: c.date, units: c.amtKRW / k });
@@ -267,6 +269,8 @@ export function worlds(state, upto = null) {
     const amtUSD = c.cur === 'USD' ? c.amt : (fx ? c.amtKRW / fx : 0);
     const s = P.closeOn('^GSPC', c.date);
     if (s) sUnits.push({ date: c.date, units: amtUSD / s });
+    const ko = P.adjOn('KO', c.date);
+    if (ko) koUnits.push({ date: c.date, units: amtUSD / ko });
   }
 
   // 현금 입력이 장부와 달라 자본이 한 번에 조정된 지점 — 그래프에서 절벽처럼 보이므로 설명용으로 넘긴다.
@@ -279,7 +283,7 @@ export function worlds(state, upto = null) {
   }
 
   const rate = (state.settings?.depositRate ?? 3) / 100; // 정기예금 가정 금리(연, 복리)
-  const out = { dates, deposits: [], actual: [], kospi: [], sp500: [], bank: [], rate: rate * 100, cashAdj };
+  const out = { dates, deposits: [], actual: [], kospi: [], sp500: [], coke: [], bank: [], rate: rate * 100, cashAdj };
   for (const d of dates) {
     // 투입 원금 + 예금 세계(같은 날 같은 금액을 연 rate% 복리로)
     let dep = 0, bank = 0;
@@ -312,6 +316,10 @@ export function worlds(state, upto = null) {
     const fx = P.fxOn(d);
     if (sIdx && fx) for (const u of sUnits) { if (u.date <= d) sv += u.units * sIdx * fx; }
     out.sp500.push(sv);
+    let kov = 0;
+    const koAdj = P.adjOn('KO', d);
+    if (koAdj && fx) for (const u of koUnits) { if (u.date <= d) kov += u.units * koAdj * fx; }
+    out.coke.push(kov);
   }
   return out;
 }
@@ -770,7 +778,7 @@ export function aiPack(state) {
   L.push(`- 현금: ${pf.cashTracked ? `${fmtMoney(pf.cash.KRW)} + ${fmtMoney(pf.cash.USD, 'USD')} (${pf.cashSince}부터 직접 입력, 위 현재 가치에 포함)` : '직접 입력한 적 없음 → 위 수치는 보유 주식만 합산한 것'}`);
   if (w) {
     const last = w.dates.length - 1;
-    L.push(`- 만약(같은 돈을 다르게 굴렸을 때의 현재 가치): 실제 ${fmtMoney(w.actual[last])} / 코스피만 샀다면 ${fmtMoney(w.kospi[last])} / S&P500만 샀다면 ${fmtMoney(w.sp500[last])} / 예금(연 ${w.rate}%)만 했다면 ${fmtMoney(w.bank[last])}`);
+    L.push(`- 만약(같은 돈을 다르게 굴렸을 때의 현재 가치): 실제 ${fmtMoney(w.actual[last])} / 코스피만 샀다면 ${fmtMoney(w.kospi[last])} / S&P500만 샀다면 ${fmtMoney(w.sp500[last])} / 코카콜라만 샀다면 ${fmtMoney(w.coke[last])} / 예금(연 ${w.rate}%)만 했다면 ${fmtMoney(w.bank[last])}`);
   }
   L.push('');
   L.push('## 보유 종목');
@@ -918,7 +926,7 @@ export function fundSummary(state, closeDate) {
       watch: (state.watchlist || []).length,
       swaps: (state.swaps || []).length,
     },
-    worlds: w ? { actual: w.actual[li], kospi: w.kospi[li], sp500: w.sp500[li], bank: w.bank[li], rate: w.rate } : null,
+    worlds: w ? { actual: w.actual[li], kospi: w.kospi[li], sp500: w.sp500[li], coke: w.coke[li], bank: w.bank[li], rate: w.rate } : null,
     loan: ln ? { cumulative: ln.cumulative, balance: ln.balance, accounts: ln.accounts.length, netProfit: ln.netProfit } : null,
   };
 }

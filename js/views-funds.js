@@ -276,6 +276,7 @@ function vFund(id) {
     ${w ? `<div class="kpis">
       <div class="kpi"><div class="k">코스피만 샀다면</div><div class="v">${fmtMoney(w.kospi)}</div><div class="s ${pctClass(w.kospi - w.actual)}">실제 대비 ${fmtMoney(w.kospi - w.actual)}</div></div>
       <div class="kpi"><div class="k">S&P500만 샀다면</div><div class="v">${fmtMoney(w.sp500)}</div><div class="s ${pctClass(w.sp500 - w.actual)}">실제 대비 ${fmtMoney(w.sp500 - w.actual)}</div></div>
+      ${w.coke != null ? `<div class="kpi"><div class="k">코카콜라만 샀다면</div><div class="v">${fmtMoney(w.coke)}</div><div class="s ${pctClass(w.coke - w.actual)}">실제 대비 ${fmtMoney(w.coke - w.actual)}</div></div>` : ''}
       <div class="kpi"><div class="k">예금만 했다면 (연 ${w.rate}%)</div><div class="v">${fmtMoney(w.bank)}</div><div class="s ${pctClass(w.bank - w.actual)}">실제 대비 ${fmtMoney(w.bank - w.actual)}</div></div>
     </div>
     <p class="small muted" style="margin:6px 2px 14px;">청산일(${a.to}) 기준으로 얼린 값입니다.</p>` : ''}

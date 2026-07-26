@@ -7,7 +7,7 @@ import { uid, todayStr, esc, fmtMoney, fmtPct, fmtQty, pctClass } from './util.j
 import { lineChart, moneyShort, bindCharts } from './chart.js';
 
 const C = {
-  actual: '#0f9d6a', kospi: '#8a8a8a', sp500: '#8b5cc9', bank: '#3b7ea1', deposits: '#c65ea8',
+  actual: '#0f9d6a', kospi: '#8a8a8a', sp500: '#8b5cc9', coke: '#e0553b', bank: '#3b7ea1', deposits: '#c65ea8',
 };
 
 // ---------- 평행우주 ----------
@@ -24,6 +24,7 @@ function vWorlds() {
     ['실제의 나', w.actual[li], C.actual, `기록한 그대로 — 보유 주식${pf.cashTracked ? ' + 입력한 현금' : ' (현금 미입력)'}`],
     ['코스피만 산 나', w.kospi[li], C.kospi, '원금을 넣은 날 같은 금액으로 코스피 지수만 매수'],
     ['S&P500만 산 나', w.sp500[li], C.sp500, '원금을 넣은 날 같은 금액으로 S&P500만 매수'],
+    ['코카콜라만 산 나', w.coke[li], C.coke, '원금을 넣은 날 같은 금액으로 코카콜라(KO)만 매수 (배당 재투자)'],
     ['예금만 한 나', w.bank[li], C.bank, `원금을 넣은 날 같은 금액을 연 ${w.rate}% 예금에 (설정에서 금리 변경)`],
   ];
   const dep = w.deposits[li];
@@ -40,6 +41,7 @@ function vWorlds() {
       { label: '실제의 나', color: C.actual, values: w.actual },
       { label: '코스피만', color: C.kospi, values: w.kospi },
       { label: 'S&P500만', color: C.sp500, values: w.sp500 },
+      { label: '코카콜라만', color: C.coke, values: w.coke },
       { label: '예금만', color: C.bank, values: w.bank },
       { label: '투입 원금', color: C.deposits, values: w.deposits, dash: true },
     ],
@@ -75,7 +77,7 @@ function vWorlds() {
           </tr>`).join('')}
       </table></div>
       <p class="hint">투입 원금은 <b>밖에서 새로 끌어온 돈</b>만 셉니다 — 판 돈으로 다시 산 것은 새 투입이 아니므로, 매매를 많이 했다고 원금이 불어나지 않습니다.
-      네 세계 모두 같은 날 같은 금액을 굴리므로 비교는 공정합니다. 가정: 배당 재투자 · 달러는 당일 환율 환산 · 예금은 연 ${w.rate}% 복리(세전).</p>
+      모든 세계가 같은 날 같은 금액을 굴리므로 비교는 공정합니다. 가정: 배당 재투자 · 달러는 당일 환율 환산 · 예금은 연 ${w.rate}% 복리(세전).</p>
     </div>
     <p class="small muted" style="margin:0 2px;">매도·물타기 하나하나의 채점은 <a href="#/actions">회상</a>에서.</p>`;
 }
