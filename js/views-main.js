@@ -125,7 +125,7 @@ function vHome() {
   const retParts = [];
   if (sK.has && sK.ret != null) retParts.push(`₩ <b class="${pctClass(sK.ret)}">${fmtPct(sK.ret)}</b>`);
   if (sU.has && sU.ret != null) retParts.push(`$ <b class="${pctClass(sU.ret)}">${fmtPct(sU.ret)}</b>`);
-  if (bothCur && pf.ret != null) retParts.push(`합 <b class="${pctClass(pf.ret)}">${fmtPct(pf.ret)}</b> <span class="muted">(환영향 제외)</span>`);
+  if (bothCur && pf.ret != null) retParts.push(`합 <b class="${pctClass(pf.ret)}">${fmtPct(pf.ret)}</b> <span class="muted">(환영향0)</span>`);
 
   // 제목 줄: 현금이 들어갔는지 + 달러가 있으면 환율. 현금 미입력이면 사실대로 '미포함'.
   const heroNote = [

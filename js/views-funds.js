@@ -195,7 +195,7 @@ function vFund(id) {
   const retParts = [];
   if (sK?.has && sK.ret != null) retParts.push(`₩ <b class="${pctClass(sK.ret)}">${fmtPct(sK.ret)}</b>`);
   if (sU?.has && sU.ret != null) retParts.push(`$ <b class="${pctClass(sU.ret)}">${fmtPct(sU.ret)}</b>`);
-  if (sK?.has && sU?.has && s.ret != null) retParts.push(`합 <b class="${pctClass(s.ret)}">${fmtPct(s.ret)}</b> <span class="muted">(환영향 제외)</span>`);
+  if (sK?.has && sU?.has && s.ret != null) retParts.push(`합 <b class="${pctClass(s.ret)}">${fmtPct(s.ret)}</b> <span class="muted">(환영향0)</span>`);
 
   const heroNote = [
     s.cashTracked ? '현금 포함' : '현금 미포함',
