@@ -221,21 +221,26 @@ function setRefreshingUI(on) {
   btn.disabled = on;
 }
 // quiet: 사용자가 누른 게 아니라 앱이 스스로 부른 경우(오늘 종가가 아직 없을 때의 자가 치유).
-// 클릭 핸들러로 불리면 opts가 이벤트 객체라 quiet는 자연히 false가 된다.
+// 클릭 핸들러로 불리면 opts가 이벤트 객체라 quiet는 자연히 false가 된다(market도 undefined).
+// market: 받을 시장('kr'|'us'|'all'). 안 주면 비어 있는 시장을 보고 알아서 정한다.
 export async function triggerRefresh(opts = {}) {
   const quiet = opts && opts.quiet === true;
+  const market = (opts && opts.market) || P.marketToRefresh();
   if (refreshing) return;
   if (!state.settings.ghPat || !state.settings.ghRepo) { if (!quiet) toast('설정에서 시세 저장소를 먼저 연결하세요'); return; }
   refreshing = true;
   setRefreshingUI(true);
-  toast(quiet ? '오늘 종가를 받아오는 중 — 완료되면 자동 반영됩니다' : '시세 갱신을 요청했습니다 — 1~2분 걸립니다', 4200);
+  // 한 시장만 받으면 50초 안팎, 전 종목이면 1분 반 안팎 (실측)
+  toast(quiet ? '오늘 종가를 받아오는 중 — 완료되면 자동 반영됩니다'
+              : `시세 갱신을 요청했습니다 — ${market === 'all' ? '1~2분' : '1분 안팎'} 걸립니다`, 4200);
 
   const before = P.updatedAt()?.getTime() || 0;
   const done = (msg, ms) => { refreshing = false; setRefreshingUI(false); toast(msg, ms); };
 
   try {
-    await P.forceRefresh(state.settings);
-    // 워크플로는 종목 수에 따라 1~3분 걸린다(87개 기준 대략 100초). 전엔 40초 뒤 한 번만
+    await P.forceRefresh(state.settings, market);
+    // 워크플로는 받는 종목 수에 따라 다르다 — 실측으로 한국만 27종목 47초, 전 종목 82초.
+    // 전엔 40초 뒤 한 번만
     // 다시 읽어서, 아직 안 끝난 옛 데이터를 보고 "갱신했습니다"라고 말했다 — 눌러도 그대로인
     // 것처럼 보인 진짜 원인. 이제 끝날 때까지 주기적으로 확인하고, 실제로 바뀌었을 때만 알린다.
     const deadline = Date.now() + 240000;   // 최대 4분

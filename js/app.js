@@ -54,7 +54,9 @@ async function init() {
       if (need.length) {
         for (const s of need) done[s.mkt] = s.day;
         localStorage.setItem(K, JSON.stringify(done));
-        triggerRefresh({ quiet: true });
+        // 비어 있는 시장이 하나면 그 시장만 받는다 — 한국 종가만 없는데 미국 종목까지
+        // 받으면 기다리는 시간이 세 배가 된다.
+        triggerRefresh({ quiet: true, market: need.length === 1 ? need[0].mkt : 'all' });
       }
     }
   } catch { /* 자가 치유는 실패해도 조용히 — 다음 크론이 어차피 받는다 */ }

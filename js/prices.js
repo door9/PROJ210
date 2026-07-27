@@ -77,11 +77,13 @@ export async function ghTest(cfg) {
 }
 
 // 시세 갱신 워크플로 즉시 실행 요청 (실패해도 다음 정기 갱신에 포함되므로 무시)
-async function dispatchRefresh(cfg) {
+// market: 'kr'|'us'면 그 시장 종목만 받는다 — 한국 종가만 없는데 미국 종목까지 받으면
+// 기다리는 시간이 세 배가 된다(실측: 전체 88종목 71초 vs 한국 27종목 36초).
+async function dispatchRefresh(cfg, market = 'all') {
   await fetch(`https://api.github.com/repos/${cfg.ghRepo}/actions/workflows/prices.yml/dispatches`, {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + cfg.ghPat, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ref: 'main' }),
+    body: JSON.stringify({ ref: 'main', inputs: { market } }),
   });
 }
 
@@ -111,9 +113,17 @@ export async function registerTicker(cfg, symbol) {
 // 앱을 열 때 갱신을 요청하던 로직은 제거했다: 실시간 시세가 필요하지 않은데 열 때마다
 // Actions를 돌려 한도를 갉아먹었고, 기기별 쓰로틀이라 PC·폰을 같이 열면 중복 실행됐다.
 // 사용자가 지금 당장 받고 싶으면 상단바의 갱신 버튼(forceRefresh)을 누르면 된다.
-export async function forceRefresh(cfg) {
+export async function forceRefresh(cfg, market = 'all') {
   if (!ghReady(cfg)) throw new Error('시세 저장소가 설정되지 않았습니다');
-  await dispatchRefresh(cfg);
+  await dispatchRefresh(cfg, market);
+}
+
+// 지금 요청한다면 어느 시장을 받아야 하나 — 'kr'|'us'|'all'.
+// 한쪽 시장 종가만 비어 있으면 그 시장만 받는다(그만큼 빨리 끝난다).
+// 양쪽 다 비었거나 아무 데도 안 비었으면(사용자가 그냥 눌러 본 경우) 전체를 받는다.
+export function marketToRefresh() {
+  const stale = staleClosedMarkets();
+  return stale.length === 1 ? stale[0].mkt : 'all';
 }
 
 export const has = sym => map.has(sym);
