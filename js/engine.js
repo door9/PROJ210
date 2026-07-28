@@ -104,14 +104,31 @@ export function capitalLedger(state, upto = null) {
   const push = (date, cur, amt, src) => {
     if (Math.abs(amt) > 1e-9) events.push({ date, cur, amt, amtKRW: P.toKRW(amt, cur, date) || 0, src });
   };
+  // 첫 현금 입력은 '자본 이동'이 아니라 '기준 맞추기'다.
+  //
+  // 그전까지 앱은 실제 잔액을 모른 채 매도 대금만 쌓아 추측한다(pool). 처음으로 실제 잔액을
+  // 알려 준 날, 그 추측과의 차이를 '그날 돈이 오갔다'로 기록하면 그건 사실이 아니다 —
+  // 그날 움직인 게 아니라 그날 비로소 진실을 알게 된 것이고, 차이는 그 이전 아무 때나 생긴
+  // 것이기 때문이다. 그래서 첫 입력은 장부만 실제 값에 맞추고 자본에는 손대지 않는다.
+  //
+  // 실제로 이 처리가 없을 때, 펀드에서 제외한 종목(FPS·SIMO)에 쓴 돈이 전부 첫 입력일 하루에
+  // 뭉쳐 '순유출 610만원'이라는 없는 사건으로 나타났다. 그 종목들의 매매 기록은 지웠는데
+  // 그 돈만 유령처럼 남은 셈이라 — 들어온 기록 없이 나간 기록만 있는 비대칭이었다.
+  //
+  // 두 번째 입력부터는 다르다. 직전에 확인한 '진짜 잔액'이 기준이므로, 거기서 벌어진 차이는
+  // 그 사이에 실제로 오간 돈이 맞다. 그래서 그때부터는 자본 이동으로 센다.
+  let calibrated = false;
   const applyCashEntry = (e) => {
     for (const cur of ['KRW', 'USD']) {
       const declared = e[cur] || 0;
       const diff = declared - pool[cur];   // 장부보다 많으면 밖에서 온 돈, 적으면 인출
-      netCap[cur] += diff;
+      if (calibrated) {
+        netCap[cur] += diff;
+        push(e.date, cur, diff, 'cash');
+      }
       pool[cur] = declared;
-      push(e.date, cur, diff, 'cash');
     }
+    calibrated = true;
   };
 
   for (const t of trades) {
