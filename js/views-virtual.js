@@ -6,7 +6,7 @@
 import { state, saveNow, toast, openModal, closeModal, confirmModal, registerView, render } from './core.js';
 import * as E from './engine.js';
 import * as P from './prices.js';
-import { uid, todayStr, esc, fmtMoney, fmtSigned, fmtPct, fmtQty, pctClass } from './util.js';
+import { uid, todayStr, esc, fmtMoney, fmtSigned, fmtPct, fmtQty, pctClass, bindKrArrowStep } from './util.js';
 
 // 펼쳐 놓은 펀드 id (화면을 다시 그려도 유지). null이면 모두 접힘.
 let openFundId = null;
@@ -101,9 +101,12 @@ function openPositionModal(fund) {
         <label class="fld">수량
           <input name="qty" type="number" step="any" min="0" required>
         </label>
+        <label class="fld">수수료·제세금 (선택)
+          <input name="fee" type="number" step="any" min="0" placeholder="0">
+        </label>
       </div>
       <p class="hint" style="margin:8px 0 0;">매수가를 비워 두지 말고 그날 실제로 살 수 있었던 값을 넣으세요.
-      그날 종가와 크게 다르면 저장 뒤에 알려 드립니다.</p>
+      그날 종가와 크게 다르면 저장 뒤에 알려 드립니다. 수수료는 매입 원가에 더해집니다.</p>
       <div class="btn-row" style="justify-content:flex-end; margin-top:16px;">
         <button class="btn" type="button" data-x="cancel">취소</button>
         <button class="btn primary" type="submit">넣기</button>
@@ -120,6 +123,11 @@ function openPositionModal(fund) {
   };
   f.symbol.addEventListener('change', hintClose);
   f.date.addEventListener('change', hintClose);
+  // 가격칸 방향키 — 한국 종목이면 호가 단위로, 그 외(달러 등)는 기본(±1) 동작.
+  bindKrArrowStep(f.price, () => {
+    const raw = f.symbol.value;
+    return raw ? P.currencyOf(P.resolveSymbol(raw)) : null;
+  });
 
   f.addEventListener('submit', e => {
     e.preventDefault();
@@ -133,8 +141,9 @@ function openPositionModal(fund) {
     const cur = findFund(fundId);
     if (!cur) { closeModal(); render(); toast('그 사이 펀드가 사라졌습니다'); return; }
     cur.positions = [...(cur.positions || []), {
-      id: uid(), symbol, name: P.info(symbol)?.name || symbol,
-      date: f.date.value, price, qty,
+      id: uid(), side: 'buy', symbol, name: P.info(symbol)?.name || symbol,
+      date: f.date.value, price, qty, fee: parseFloat(f.fee.value) || 0,
+      createdAt: Date.now(),
     }];
     cur.updatedAt = Date.now();   // positions가 펀드 안에 있으므로 펀드의 시각을 올려야 동기화된다
     ensureTicker(symbol);
@@ -150,28 +159,140 @@ function openPositionModal(fund) {
   });
 }
 
-// ---------- 펀드 한 개의 상세 (보유 표) ----------
-function fundDetail(v, sum) {
-  if (!sum.rows.length) {
-    return `<div class="empty">아직 넣은 종목이 없습니다 — "가상 매수"를 눌러 시작하세요</div>`;
-  }
-  const body = sum.rows.map(r => {
-    // 나눠 산 건들은 종목 아래에 접어 둔다 — 합산이 기본, 낱건은 참고용(그리고 지우려면 필요하다).
-    const lotLines = r.lots.map(l => `
-      <div style="display:flex; gap:8px; align-items:center; margin-top:3px;">
-        <span class="muted small">${l.p.date} · ${fmtQty(l.p.qty)}주 @ ${fmtMoney(l.p.price, r.cur)}${
-          l.hasPrice ? '' : (l.noHistory ? ' · <b class="down">매수일 시세 없음</b>' : ' · 시세 대기')}</span>
-        <button class="btn small danger" style="padding:1px 7px; line-height:1.5;"
-                data-delpos="${v.id}|${l.p.id}" title="이 매수 건 빼기">✕</button>
-      </div>`).join('');
+// ---------- 가상 매도 ----------
+// 보유하지 않은 종목·수량은 팔 수 없게 막는다. FIFO로 원가를 매기므로(replay), 가진 것보다
+// 많이 팔면 원가 없는 매도가 생겨 실현손익이 부풀려진다.
+function openSellModal(fund) {
+  const fundId = fund.id;
+  const today = todayStr();
+  const sum = E.virtualRows(fund);
+  if (!sum.rows.length) { toast('팔 수 있는 보유 종목이 없습니다'); return; }
 
-    return `
+  const opts = sum.rows.map(r =>
+    `<option value="${esc(r.symbol)}" data-qty="${r.qty}" data-cur="${r.cur}">${esc(r.name)} — 보유 ${fmtQty(r.qty)}주</option>`).join('');
+
+  const m = openModal(`
+    <h2>가상 매도 — ${esc(fund.name)}</h2>
+    <form id="vs-form">
+      <div class="form-grid">
+        <label class="fld">종목
+          <select name="symbol" required>${opts}</select>
+        </label>
+        <label class="fld">매도일
+          <input type="date" name="date" max="${today}" value="${today}" required>
+        </label>
+        <label class="fld">매도가 (종목 통화 그대로)
+          <input name="price" type="number" step="any" min="0" required>
+        </label>
+        <label class="fld">수량 <span class="muted small" data-heldhint></span>
+          <input name="qty" type="number" step="any" min="0" required>
+        </label>
+        <label class="fld">수수료·제세금 (선택)
+          <input name="fee" type="number" step="any" min="0" placeholder="0">
+        </label>
+      </div>
+      <p class="hint" style="margin:8px 0 0;">수수료·세금은 매도 대금에서 빼고 실현손익을 계산합니다.
+      원가는 먼저 산 것부터(선입선출) 매깁니다 — 실제 펀드와 같은 방식.</p>
+      <div class="btn-row" style="justify-content:flex-end; margin-top:16px;">
+        <button class="btn" type="button" data-x="cancel">취소</button>
+        <button class="btn primary" type="submit">팔기</button>
+      </div>
+    </form>`);
+  m.querySelector('[data-x=cancel]').addEventListener('click', closeModal);
+
+  const f = m.querySelector('#vs-form');
+  const hint = m.querySelector('[data-heldhint]');
+  // 고른 종목·날짜 기준으로 그날 보유 수량과 종가를 안내한다
+  const refresh = () => {
+    const fd = findFund(fundId);
+    if (!fd) return;
+    const sym = f.symbol.value;
+    const held = E.virtualHeldQty(fd, sym, f.date.value);
+    hint.textContent = `— 그날 보유 ${fmtQty(held)}주`;
+    f.qty.max = held;
+    const c = P.closeOn(sym, f.date.value);
+    if (c != null && !f.price.value) f.price.placeholder = `그날 종가 ${c}`;
+  };
+  f.symbol.addEventListener('change', refresh);
+  f.date.addEventListener('change', refresh);
+  refresh();
+  bindKrArrowStep(f.price, () => P.currencyOf(f.symbol.value));
+
+  f.addEventListener('submit', e => {
+    e.preventDefault();
+    const symbol = f.symbol.value;
+    const price = parseFloat(f.price.value);
+    const qty = parseFloat(f.qty.value);
+    if (!(price > 0) || !(qty > 0)) { toast('매도가와 수량은 0보다 커야 합니다'); return; }
+
+    const cur = findFund(fundId);   // 동기화가 배열을 갈아끼웠을 수 있으므로 지금 다시 찾는다
+    if (!cur) { closeModal(); render(); toast('그 사이 펀드가 사라졌습니다'); return; }
+
+    const held = E.virtualHeldQty(cur, symbol, f.date.value);
+    if (qty > held + 1e-9) {
+      toast(`${f.date.value} 기준 보유 ${fmtQty(held)}주뿐입니다`, 3600);
+      return;
+    }
+    cur.positions = [...(cur.positions || []), {
+      id: uid(), side: 'sell', symbol, name: P.info(symbol)?.name || symbol,
+      date: f.date.value, price, qty, fee: parseFloat(f.fee.value) || 0,
+      createdAt: Date.now(),
+    }];
+    cur.updatedAt = Date.now();
+    saveNow(); closeModal(); render(); toast('팔았습니다');
+  });
+}
+
+// ---------- 현금 입력 ----------
+// 매매에서 자동으로 만들지 않고 사용자가 직접 넣는다. 실제 펀드에서 장부가 추측한 현금과
+// 실제 잔액이 어긋나 '유령 유출'이 생겼던 문제를 여기서 되풀이하지 않으려는 것.
+function openCashModal(fund) {
+  const fundId = fund.id;
+  const c = fund.cash || {};
+  const m = openModal(`
+    <h2>현금 — ${esc(fund.name)}</h2>
+    <form id="vc-form">
+      <div class="form-grid">
+        <label class="fld">원화
+          <input name="krw" type="number" step="any" value="${c.KRW || 0}">
+        </label>
+        <label class="fld">달러
+          <input name="usd" type="number" step="any" value="${c.USD || 0}">
+        </label>
+      </div>
+      <p class="hint" style="margin:8px 0 0;">이 펀드가 지금 들고 있는 현금입니다. 총자산(보유 평가액 + 현금)에 더해집니다.
+      매매를 넣어도 자동으로 바뀌지 않으니, 바뀌었으면 직접 고쳐 주세요.</p>
+      <div class="btn-row" style="justify-content:flex-end; margin-top:16px;">
+        <button class="btn" type="button" data-x="cancel">취소</button>
+        <button class="btn primary" type="submit">저장</button>
+      </div>
+    </form>`);
+  m.querySelector('[data-x=cancel]').addEventListener('click', closeModal);
+  m.querySelector('#vc-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const f = e.target;
+    const cur = findFund(fundId);
+    if (!cur) { closeModal(); render(); toast('그 사이 펀드가 사라졌습니다'); return; }
+    cur.cash = { KRW: parseFloat(f.krw.value) || 0, USD: parseFloat(f.usd.value) || 0 };
+    cur.updatedAt = Date.now();
+    saveNow(); closeModal(); render(); toast('저장했습니다');
+  });
+}
+
+// ---------- 펀드 한 개의 상세 ----------
+function fundDetail(v, sum) {
+  if (!sum.trades.length) {
+    return `<div class="empty">아직 기록이 없습니다 — "가상 매수"를 눌러 시작하세요</div>`;
+  }
+
+  // 보유 종목 (합산). 다 판 종목은 여기서 빠지고 아래 거래 내역·실현손익에만 남는다.
+  const holdBody = sum.rows.map(r => `
     <tr>
       <td>
         <b>${esc(r.name)}</b>
         <br><span class="muted small">${esc(r.symbol)}${r.buys > 1 ? ` · ${r.buys}건 합산` : ''}${r.qty > 0 ? ` · ${fmtQty(r.qty)}주 · 평균 ${fmtMoney(r.avgPrice, r.cur)}` : ''}</span>
         ${r.frozenSince ? `<br><span class="muted small" title="거래정지·상장폐지로 시세가 멈췄습니다">${r.frozenSince} 시세 정지</span>` : ''}
-        ${lotLines}
+        ${r.badLots ? `<br><span class="down small">매수일 시세 없음 ${r.badLots}건 — 종목코드 확인</span>` : ''}
       </td>
       <td class="num">${r.hasPrice
         ? `${fmtMoney(r.cost, r.cur)}<br><span class="muted small">${fmtMoney(r.costKRW)}</span>`
@@ -180,23 +301,62 @@ function fundDetail(v, sum) {
         ? `${fmtMoney(r.value, r.cur)}<br><span class="muted small">${fmtMoney(r.valueKRW)}</span>`
         : '<span class="muted">시세 대기 중</span>'}</td>
       <td class="num ${pctClass(r.ret)}"><b>${fmtPct(r.ret)}</b>${r.holdDays != null ? `<br><span class="muted small">최장 ${Math.round(r.holdDays / 30.44)}개월</span>` : ''}</td>
+    </tr>`).join('');
+
+  // 실현손익 — 판 건별로. 원가는 선입선출(replay)이 매긴다.
+  const soldBody = sum.realized.slice().reverse().map(r => {
+    const cur = P.currencyOf(r.sell.symbol);
+    return `
+    <tr>
+      <td><b>${esc(P.info(r.sell.symbol)?.name || r.sell.name || r.sell.symbol)}</b>
+        <br><span class="muted small">${r.sell.date} · ${fmtQty(r.sell.qty)}주 @ ${fmtMoney(r.sell.price, cur)}${r.sell.fee ? ` · 비용 ${fmtMoney(r.sell.fee, cur)}` : ''}</span>
+        ${r.oversold ? '<br><span class="down small">보유보다 많이 판 기록 — 원가 없는 수량이 있습니다</span>' : ''}</td>
+      <td class="num">${fmtMoney(r.costSum, cur)}</td>
+      <td class="num">${fmtMoney(r.proceeds, cur)}</td>
+      <td class="num ${pctClass(r.pnl)}"><b>${fmtSigned(r.pnl)}</b><br><span class="small">${fmtPct(r.ret)}</span></td>
+    </tr>`;
+  }).join('');
+
+  // 거래 내역 — 매수·매도 전부(최신순). 지우는 것도 여기서 한다.
+  const tradeBody = sum.trades.slice().reverse().map(t => {
+    const cur = P.currencyOf(t.symbol);
+    const isBuy = t.side === 'buy';
+    return `
+    <tr>
+      <td><span class="tag ${isBuy ? 'buy' : 'sell'}">${isBuy ? '매수' : '매도'}</span>
+        <b style="margin-left:6px;">${esc(P.info(t.symbol)?.name || t.name || t.symbol)}</b>
+        <br><span class="muted small">${t.date} · ${fmtQty(t.qty)}주 @ ${fmtMoney(t.price, cur)}${t.fee ? ` · 수수료·세금 ${fmtMoney(t.fee, cur)}` : ''}</span></td>
+      <td class="num"><button class="btn small danger" data-delpos="${v.id}|${t.id}">삭제</button></td>
     </tr>`;
   }).join('');
 
   return `
+    ${sum.rows.length ? `
+    <h4 style="margin:12px 0 6px;">보유 종목</h4>
     <div class="tbl-wrap"><table class="tbl">
       <tr><th>종목</th><th class="num">매입액</th><th class="num">평가액</th><th class="num">수익률</th></tr>
-      ${body}
-    </table></div>
+      ${holdBody}
+    </table></div>` : '<div class="empty" style="margin-top:10px;">보유 중인 종목이 없습니다 (전부 팔았습니다)</div>'}
     ${sum.bad ? `<div class="warnbox" style="margin-top:8px;">
       <b>매수 ${sum.bad}건은 종목코드를 확인해 주세요.</b> 시세는 받아 왔는데 <b>매수일보다 늦게 시작</b>합니다 —
       코스닥 종목을 <code>.KS</code>로 넣으면 이런 일이 생깁니다(야후가 최근 며칠짜리 껍데기를 줍니다).
-      그 건을 ✕로 빼고 <code>.KQ</code>를 붙여 다시 넣으면 됩니다. 합계에서는 빼 두었습니다.
+      아래 거래 내역에서 그 건을 지우고 <code>.KQ</code>를 붙여 다시 넣으면 됩니다. 합계에서는 빼 두었습니다.
     </div>` : ''}
     ${sum.pending - sum.bad > 0 ? `<div class="warnbox" style="margin-top:8px;">시세를 아직 못 받은 매수 ${sum.pending - sum.bad}건은 합계에서 뺐습니다 — 몇 분 뒤 자동으로 채워집니다.</div>` : ''}
-    <p class="hint">같은 종목을 여러 번 샀으면 <b>한 줄로 합산</b>합니다 — 수익률은 매입액 전체 대비이고, 평균 단가는 수량으로 가중한 값입니다.
+
+    ${sum.realized.length ? `
+    <h4 style="margin:16px 0 6px;">실현손익 <span class="muted small">— 판 것들의 확정 손익</span></h4>
+    <div class="tbl-wrap"><table class="tbl">
+      <tr><th>매도</th><th class="num">원가</th><th class="num">매도대금</th><th class="num">손익</th></tr>
+      ${soldBody}
+    </table></div>` : ''}
+
+    <h4 style="margin:16px 0 6px;">거래 내역 <span class="muted small">(${sum.trades.length}건)</span></h4>
+    <div class="tbl-wrap"><table class="tbl">${tradeBody}</table></div>
+
+    <p class="hint">같은 종목을 여러 번 샀으면 보유 표에서 <b>한 줄로 합산</b>합니다 — 평균 단가는 수량으로 가중한 값이고 매수 수수료가 포함됩니다.
     평가액은 매수 건마다 그날 이후의 <b>수정종가</b> 변동을 적용해 더한 값입니다(배당·액면분할 반영) — 홈의 보유 종목과 같은 방식.
-    종목 수익률은 그 종목 통화 기준이라 환율 영향이 없고, 위 원화 합계에는 환율 변동이 포함됩니다.</p>`;
+    매도 원가는 먼저 산 것부터(선입선출) 매기고, 매도 수수료·세금은 매도 대금에서 뺍니다.</p>`;
 }
 
 // ---------- 목록 ----------
@@ -210,24 +370,29 @@ function vVirtual() {
       <div style="display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap;">
         <div style="min-width:0;">
           <h3 style="margin:0;">${esc(v.name)}</h3>
-          <div class="muted small">종목 ${sum.rows.length}개${(v.positions || []).length > sum.rows.length ? ` · 매수 ${(v.positions || []).length}건` : ''}${v.note ? ' · ' + esc(v.note) : ''}</div>
+          <div class="muted small">보유 ${sum.rows.length}종목 · 거래 ${sum.trades.length}건${v.note ? ' · ' + esc(v.note) : ''}</div>
         </div>
         <div style="margin-left:auto; text-align:right; white-space:nowrap;">
-          <div style="font-size:17px; font-weight:700;">${sum.rows.length ? fmtMoney(sum.valueKRW) : '–'}</div>
+          <div style="font-size:17px; font-weight:700;">${sum.trades.length ? fmtMoney(sum.totalKRW) : '–'}</div>
           ${sum.ret != null ? `<div class="small ${pctClass(sum.profitKRW)}">${fmtSigned(sum.profitKRW)} · ${fmtPct(sum.ret)}</div>` : ''}
         </div>
       </div>
       <div class="btn-row" style="margin:10px 0 0; flex-wrap:wrap;">
         <button class="btn small ${isOpen ? 'primary' : ''}" data-toggle="${v.id}">${isOpen ? '접기' : '보기'}</button>
         <button class="btn small" data-addpos="${v.id}">가상 매수</button>
+        <button class="btn small" data-sell="${v.id}">가상 매도</button>
+        <button class="btn small" data-cash="${v.id}">현금</button>
         <button class="btn small" data-edit="${v.id}">이름·메모</button>
         <button class="btn small danger" style="margin-left:auto;" data-delfund="${v.id}">펀드 삭제</button>
       </div>
       ${isOpen ? `<div style="margin-top:12px;">
-        ${sum.rows.length ? `<dl class="hero-facts" style="margin:0 0 10px;">
+        ${sum.trades.length ? `<dl class="hero-facts" style="margin:0 0 10px;">
           <dt>매입액</dt><dd>${fmtMoney(sum.costKRW)}</dd>
           <dt>평가액</dt><dd>${fmtMoney(sum.valueKRW)}</dd>
-          <dt>손익</dt><dd class="${pctClass(sum.profitKRW)}"><b>${fmtSigned(sum.profitKRW)}</b> (${fmtPct(sum.ret)})</dd>
+          <dt>평가손익</dt><dd class="${pctClass(sum.profitKRW)}"><b>${fmtSigned(sum.profitKRW)}</b> (${fmtPct(sum.ret)})</dd>
+          ${sum.realized.length ? `<dt>실현손익</dt><dd class="${pctClass(sum.realizedKRW)}"><b>${fmtSigned(sum.realizedKRW)}</b></dd>` : ''}
+          <dt>현금</dt><dd>${fmtMoney(sum.cashKRW)}${sum.cash.USD ? ` <span class="muted small">(${fmtMoney(sum.cash.KRW)} + ${fmtMoney(sum.cash.USD, 'USD')})</span>` : ''}</dd>
+          <dt>총자산</dt><dd><b>${fmtMoney(sum.totalKRW)}</b> <span class="muted small">보유 평가액 + 현금</span></dd>
         </dl>` : ''}
         ${fundDetail(v, sum)}
       </div>` : ''}
@@ -258,6 +423,16 @@ vVirtual.bind_ = (root) => {
     if (v) { openFundId = v.id; openPositionModal(v); }
   }));
 
+  root.querySelectorAll('[data-sell]').forEach(b => b.addEventListener('click', () => {
+    const v = find(b.dataset.sell);
+    if (v) { openFundId = v.id; openSellModal(v); }
+  }));
+
+  root.querySelectorAll('[data-cash]').forEach(b => b.addEventListener('click', () => {
+    const v = find(b.dataset.cash);
+    if (v) { openFundId = v.id; openCashModal(v); }
+  }));
+
   root.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => {
     const v = find(b.dataset.edit);
     if (v) openFundModal(v);
@@ -268,11 +443,17 @@ vVirtual.bind_ = (root) => {
     const v = find(vid);
     if (!v) return;
     const p = (v.positions || []).find(x => x.id === pid);
-    // 같은 종목을 여러 번 샀을 수 있으므로 어느 건인지 날짜·수량으로 못박아 보여 준다
+    // 같은 종목을 여러 번 사고팔 수 있으므로 어느 건인지 매수/매도·날짜·수량으로 못박아 보여 준다.
+    // 매수를 지우면 그 뒤 매도의 원가가 다시 매겨진다(선입선출) — 그 점도 알린다.
+    const isBuy = !p || p.side !== 'sell';
     if (!await confirmModal({
-      title: '이 매수 건을 뺄까요?',
-      body: p ? `${P.info(p.symbol)?.name || p.name || p.symbol}\n${p.date} · ${fmtQty(p.qty)}주 @ ${fmtMoney(p.price, P.currencyOf(p.symbol))}` : '',
-      okLabel: '빼기', danger: true,
+      title: `이 ${isBuy ? '매수' : '매도'} 기록을 지울까요?`,
+      body: p
+        ? `${P.info(p.symbol)?.name || p.name || p.symbol}\n${p.date} · ${fmtQty(p.qty)}주 @ ${fmtMoney(p.price, P.currencyOf(p.symbol))}`
+          + (isBuy && (v.positions || []).some(x => x.side === 'sell' && x.symbol === p.symbol)
+              ? '\n\n이 종목의 매도 기록이 있어, 지우면 실현손익이 다시 계산됩니다.' : '')
+        : '',
+      okLabel: '지우기', danger: true,
     })) return;
     // 확인창을 띄운 사이 동기화가 배열을 갈아끼웠을 수 있으므로 지금 다시 찾는다
     const cur = find(vid);

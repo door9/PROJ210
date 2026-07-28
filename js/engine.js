@@ -574,68 +574,81 @@ export function swapRows(state) {
 
 // ---- 가상 펀드 -----------------------------------------------------------------
 // 실제로는 사지 않은 종목을 "그날 그 값에 그만큼 샀다면 지금 얼마인가"로 굴려 보는 장부.
-// 매수만 있고 매도는 없다 — 이 기능의 질문이 "사서 지금까지 들고 있었다면"이므로.
 //
-// 평가는 실제 포트폴리오(lotValue)와 **같은 방식**으로 한다: 매수일 대비 수정종가 성장배수를
-// 원가에 곱한다. 그래야 배당·액면분할이 반영되고, 홈의 보유 종목과 같은 잣대로 읽힌다.
-// (현재가 × 수량으로 계산하면 분할 종목에서 값이 통째로 어긋난다.)
+// 매수·매도·수수료·현금을 실제 펀드와 **같은 방식**으로 다룬다. 그래서 계산도 같은 엔진을
+// 쓴다 — FIFO 재생(replay)으로 보유분과 실현손익을 내고, 보유분 평가는 lotValue로 한다.
+// (별도 계산기를 새로 짜면 두 곳이 서로 어긋나기 시작한다.)
 //
-// 원화 환산: 매입액은 매수일 환율, 평가액은 현재 환율. 그래서 원화 손익에는 환차손익이 포함된다
-// — 실제로 그때 원화로 환전해 샀다면 겪었을 일이라 이 편이 정직하다.
-// 같은 종목은 한 줄로 합친다 — 나눠 산 것도 결국 한 종목의 보유분이므로.
-// 매수 건마다 성장배수가 다르므로(산 날이 다르니) 평가는 건별로 계산해 더한다.
-// 평균 단가는 그 합계에서 역산한다(가중평균) — 단순 평균을 내면 수량이 다를 때 거짓이 된다.
+// 평가는 매수일 대비 수정종가 성장배수를 원가에 곱한다 — 배당·액면분할이 반영되고,
+// 홈의 보유 종목과 같은 잣대로 읽힌다. (현재가 × 수량으로 하면 분할 종목에서 값이 어긋난다.)
+//
+// 원화 환산: 매입액은 산 날의 환율, 평가액은 지금 환율. 그래서 원화 손익에 환차손익이 포함된다.
+//
+// v.positions는 이제 매매 기록이다 — {id, side, symbol, name, date, price, qty, fee}.
+// side가 없는 옛 기록은 매수로 본다(이 기능이 처음엔 매수만 받았으므로).
+export function virtualTrades(v) {
+  return [...(v?.positions || [])]
+    .map(p => ({ ...p, side: p.side || 'buy', fee: p.fee || 0 }))
+    .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.createdAt || 0) - (b.createdAt || 0));
+}
+
+// 그 시점에 그 종목을 몇 주 들고 있나 (매도 폼에서 수량 한도로 쓴다)
+export function virtualHeldQty(v, symbol, date = null) {
+  const { open } = replay(virtualTrades(v), date);
+  return open.filter(l => l.t.symbol === symbol).reduce((s, l) => s + l.qtyLeft, 0);
+}
+
 export function virtualRows(v) {
+  const trades = virtualTrades(v);
+  const { open, realized } = replay(trades);
+
+  // 보유분을 종목별로 합친다 — 나눠 산 것도 결국 한 종목의 보유분이므로.
+  // 매수 건마다 성장배수가 다르므로(산 날이 다르니) 평가는 lot별로 계산해 더하고,
+  // 평균 단가는 그 합계에서 역산한다(가중평균) — 단순 평균은 수량이 다를 때 거짓이 된다.
   const bySym = new Map();
-  for (const p of v?.positions || []) {
-    const cur = P.currencyOf(p.symbol);
-    const cost = p.price * p.qty;
-    const g = P.growth(p.symbol, p.date);        // 매수일 → 지금 (배당·분할 반영)
-    const first = P.firstDate(p.symbol);         // 그 종목 시세의 첫 봉 날짜 (없으면 null)
-    const lot = {
-      p, cost, g,
-      hasPrice: g != null,
-      // 평가가 안 되는 이유는 둘이고, 사용자가 할 일이 서로 다르다.
-      //  - 아직 시세 파일 자체가 없다 → 기다리면 된다
-      //  - 시세는 있는데 첫 봉이 매수일보다 뒤다 → 종목코드가 틀렸을 가능성이 크다
-      //    (코스닥 종목을 .KS로 잡으면 야후가 최근 며칠짜리 껍데기를 준다)
-      noHistory: g == null && !!first && first > p.date,
-      value: g != null ? cost * g : null,
-      costKRW: P.toKRW(cost, cur, p.date) || 0,  // 매입액은 산 날의 환율
-      buyClose: P.closeOn(p.symbol, p.date),     // 그날 실제 종가 (입력값과 비교용)
-      holdDays: daysBetween(p.date, todayStr()),
-    };
-    if (!bySym.has(p.symbol)) {
-      bySym.set(p.symbol, {
+  for (const lot of open) {
+    const t = lot.t;
+    const lv = lotValue(lot, null);
+    const first = P.firstDate(t.symbol);
+    if (!bySym.has(t.symbol)) {
+      bySym.set(t.symbol, {
         // 시세에 등록된 이름을 먼저 쓴다 — 넣을 당시엔 시세가 없어 종목코드가 이름으로
-        // 저장된 건들이 있는데(신규 등록 종목), 그걸 그대로 보여 주면 무슨 종목인지 알 수 없다.
-        symbol: p.symbol, name: P.info(p.symbol)?.name || p.name || p.symbol, cur, lots: [],
-        lastClose: P.last(p.symbol)?.close ?? null,
-        frozenSince: P.frozenSince(p.symbol),    // 거래정지·상장폐지면 '지금'이 사실 그날이다
+        // 저장된 건들이 있는데, 그대로 보여 주면 무슨 종목인지 알 수 없다.
+        symbol: t.symbol, name: P.info(t.symbol)?.name || t.name || t.symbol,
+        cur: lv.cur, lots: [],
+        lastClose: P.last(t.symbol)?.close ?? null,
+        frozenSince: P.frozenSince(t.symbol),   // 거래정지·상장폐지면 '지금'이 사실 그날이다
       });
     }
-    bySym.get(p.symbol).lots.push(lot);
+    bySym.get(t.symbol).lots.push({
+      t, qty: lot.qtyLeft, cost: lv.cost, costKRW: lv.costKRW,
+      value: lv.hasPrice ? lv.value : null,
+      hasPrice: lv.hasPrice,
+      // 평가가 안 되는 이유는 둘이고 할 일이 다르다: 시세 파일이 아직 없으면 기다리면 되고,
+      // 시세는 있는데 첫 봉이 매수일보다 뒤면 종목코드가 틀렸을 가능성이 크다.
+      noHistory: !lv.hasPrice && !!first && first > t.date,
+      holdDays: daysBetween(t.date, todayStr()),
+    });
   }
 
   const rows = [...bySym.values()].map(r => {
-    r.lots.sort((a, b) => a.p.date < b.p.date ? -1 : a.p.date > b.p.date ? 1 : 0);
-    // 집계는 시세가 있는 건만 — 시세를 못 받은 건을 원가로 세면 "손익 0인 자산"이 껴서 총액이 거짓이 된다.
+    r.lots.sort((a, b) => a.t.date < b.t.date ? -1 : a.t.date > b.t.date ? 1 : 0);
+    // 집계는 시세가 있는 것만 — 시세 없는 건을 원가로 세면 "손익 0인 자산"이 껴서 총액이 거짓이 된다.
     const priced = r.lots.filter(l => l.hasPrice);
-    const qty = priced.reduce((s, l) => s + l.p.qty, 0);
+    const qty = priced.reduce((s, l) => s + l.qty, 0);
     const cost = priced.reduce((s, l) => s + l.cost, 0);
     const value = priced.reduce((s, l) => s + l.value, 0);
     const costKRW = priced.reduce((s, l) => s + l.costKRW, 0);
     return {
       ...r,
       qty, cost, value, costKRW,
-      avgPrice: qty > 0 ? cost / qty : null,     // 가중평균 매입단가
-      valueKRW: priced.length ? (P.toKRW(value, r.cur) || 0) : null,  // 평가액은 지금 환율
+      avgPrice: qty > 0 ? cost / qty : null,     // 가중평균 매입단가(수수료 포함)
+      valueKRW: priced.length ? (P.toKRW(value, r.cur) || 0) : null,
       ret: cost > 0 ? value / cost - 1 : null,
-      buys: r.lots.length,                       // 몇 번에 나눠 샀나
+      buys: r.lots.length,
       pendingLots: r.lots.length - priced.length,
-      badLots: r.lots.filter(l => l.noHistory).length,   // 종목코드 의심 (매수일 이전 시세 없음)
+      badLots: r.lots.filter(l => l.noHistory).length,
       hasPrice: priced.length > 0,
-      firstDate: r.lots[0]?.p.date || null,
       holdDays: priced.length ? Math.max(...priced.map(l => l.holdDays)) : null,
     };
   });
@@ -645,20 +658,33 @@ export function virtualRows(v) {
   const valueKRW = rows.reduce((s, r) => s + (r.valueKRW || 0), 0);
   for (const r of rows) r.weight = valueKRW > 0 && r.valueKRW ? r.valueKRW / valueKRW : 0;
 
+  // 실현손익 — 실제 펀드와 같은 방식(매수 다리는 산 날 환율, 매도 다리는 판 날 환율)
+  const realizedTotalKRW = realized.reduce((s, r) => s + realizedKRW(r), 0);
+
+  // 현금은 사용자가 직접 넣는다. 매매에서 자동으로 만들지 않는다 — 실제 펀드에서 장부가
+  // 추측한 현금과 실제 잔액이 어긋나 유령 손익이 생겼던 문제를 여기서 되풀이하지 않으려고.
+  const cash = { KRW: v?.cash?.KRW || 0, USD: v?.cash?.USD || 0 };
+  const cashKRW = (cash.KRW || 0) + (P.toKRW(cash.USD, 'USD') || 0);
+
   return {
-    rows, costKRW, valueKRW,
-    profitKRW: valueKRW - costKRW,
+    rows, trades, realized,
+    costKRW, valueKRW,
+    profitKRW: valueKRW - costKRW,               // 보유분 평가손익
     ret: costKRW > 0 ? valueKRW / costKRW - 1 : null,
-    pending: rows.reduce((s, r) => s + r.pendingLots, 0),   // 시세를 아직 못 받은 매수 건수
-    bad: rows.reduce((s, r) => s + r.badLots, 0),           // 그중 종목코드가 의심스러운 건수
+    realizedKRW: realizedTotalKRW,               // 판 것들의 확정 손익
+    cash, cashKRW,
+    totalKRW: valueKRW + cashKRW,                // 총자산 = 보유 평가액 + 현금
+    pending: rows.reduce((s, r) => s + r.pendingLots, 0),
+    bad: rows.reduce((s, r) => s + r.badLots, 0),
+    oversold: realized.filter(r => r.oversold).length,   // 가진 것보다 많이 판 기록
   };
 }
 
-// 가상 펀드 목록 — 평가액 큰 순
+// 가상 펀드 목록 — 총자산 큰 순
 export function virtualFunds(state) {
   return [...(state.virtuals || [])]
     .map(v => ({ v, sum: virtualRows(v) }))
-    .sort((a, b) => b.sum.valueKRW - a.sum.valueKRW);
+    .sort((a, b) => b.sum.totalKRW - a.sum.totalKRW);
 }
 
 // ---- 투자 비용: 대출 이자 (계좌별 독립) ----------------------------------------
