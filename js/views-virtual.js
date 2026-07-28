@@ -11,6 +11,13 @@ import { uid, todayStr, esc, fmtMoney, fmtSigned, fmtPct, fmtQty, pctClass } fro
 // 펼쳐 놓은 펀드 id (화면을 다시 그려도 유지). null이면 모두 접힘.
 let openFundId = null;
 
+// 펀드는 반드시 '지금' id로 다시 찾아 쓴다. 객체를 붙들고 있으면 안 된다 —
+// Dropbox 동기화가 state.virtuals 배열을 통째로 새 객체로 갈아끼우기 때문이다
+// (sync.syncNow: state[c] = merged[c]). 모달을 띄워 놓고 입력하는 사이에 동기화가 돌면
+// 붙들고 있던 객체는 상태에서 떨어져 나간 고아가 되고, 거기에 넣은 매수 기록은 저장돼도
+// 화면에서 사라진다. 실제로 그렇게 기록이 사라지는 문제가 있었다.
+const findFund = id => (state.virtuals || []).find(v => v.id === id) || null;
+
 // 시세가 없는 종목이면 데이터 저장소에 등록을 요청한다. 관심 종목(views-insight)과 같은 방식.
 function ensureTicker(symbol) {
   if (P.has(symbol)) return;
@@ -33,6 +40,7 @@ function symbolDatalist(id) {
 
 // ---------- 펀드 만들기 / 이름 바꾸기 ----------
 function openFundModal(fund = null) {
+  const fundId = fund?.id || null;   // 객체가 아니라 id를 들고 있는다 (위 findFund 주석 참고)
   const m = openModal(`
     <h2>${fund ? '가상 펀드 수정' : '새 가상 펀드'}</h2>
     <form id="vf-form">
@@ -53,10 +61,12 @@ function openFundModal(fund = null) {
     const f = e.target;
     const name = f.name.value.trim();
     if (!name) { toast('이름을 입력하세요'); return; }
-    if (fund) {
-      fund.name = name;
-      fund.note = f.note.value.trim();
-      fund.updatedAt = Date.now();   // 동기화가 이 변경을 이기도록 — 필수
+    if (fundId) {
+      const cur = findFund(fundId);
+      if (!cur) { closeModal(); render(); toast('그 사이 펀드가 사라졌습니다'); return; }
+      cur.name = name;
+      cur.note = f.note.value.trim();
+      cur.updatedAt = Date.now();   // 동기화가 이 변경을 이기도록 — 필수
     } else {
       const nf = {
         id: uid(), name, note: f.note.value.trim(), positions: [],
@@ -66,12 +76,13 @@ function openFundModal(fund = null) {
       openFundId = nf.id;   // 만들자마자 펼쳐서 바로 종목을 넣을 수 있게
     }
     saveNow(); closeModal(); render();
-    toast(fund ? '저장했습니다' : '가상 펀드를 만들었습니다. 종목을 넣어 보세요.');
+    toast(fundId ? '저장했습니다' : '가상 펀드를 만들었습니다. 종목을 넣어 보세요.');
   });
 }
 
 // ---------- 종목 추가 ----------
 function openPositionModal(fund) {
+  const fundId = fund.id;   // 객체가 아니라 id를 들고 있는다 (위 findFund 주석 참고)
   const today = todayStr();
   const m = openModal(`
     <h2>가상 매수 — ${esc(fund.name)}</h2>
@@ -118,11 +129,14 @@ function openPositionModal(fund) {
     const qty = parseFloat(f.qty.value);
     if (!(price > 0) || !(qty > 0)) { toast('매수가와 수량은 0보다 커야 합니다'); return; }
 
-    fund.positions = [...(fund.positions || []), {
+    // 입력하는 동안 동기화가 배열을 갈아끼웠을 수 있으므로 지금 다시 찾는다
+    const cur = findFund(fundId);
+    if (!cur) { closeModal(); render(); toast('그 사이 펀드가 사라졌습니다'); return; }
+    cur.positions = [...(cur.positions || []), {
       id: uid(), symbol, name: P.info(symbol)?.name || symbol,
       date: f.date.value, price, qty,
     }];
-    fund.updatedAt = Date.now();   // positions가 펀드 안에 있으므로 펀드의 시각을 올려야 동기화된다
+    cur.updatedAt = Date.now();   // positions가 펀드 안에 있으므로 펀드의 시각을 올려야 동기화된다
     ensureTicker(symbol);
     saveNow(); closeModal(); render();
 
@@ -224,7 +238,7 @@ function vVirtual() {
 }
 
 vVirtual.bind_ = (root) => {
-  const find = id => (state.virtuals || []).find(v => v.id === id);
+  const find = findFund;
 
   root.querySelector('[data-x=newfund]')?.addEventListener('click', () => openFundModal());
 
@@ -254,8 +268,11 @@ vVirtual.bind_ = (root) => {
       body: p ? `${P.info(p.symbol)?.name || p.name || p.symbol}\n${p.date} · ${fmtQty(p.qty)}주 @ ${fmtMoney(p.price, P.currencyOf(p.symbol))}` : '',
       okLabel: '빼기', danger: true,
     })) return;
-    v.positions = (v.positions || []).filter(x => x.id !== pid);
-    v.updatedAt = Date.now();
+    // 확인창을 띄운 사이 동기화가 배열을 갈아끼웠을 수 있으므로 지금 다시 찾는다
+    const cur = find(vid);
+    if (!cur) { render(); return; }
+    cur.positions = (cur.positions || []).filter(x => x.id !== pid);
+    cur.updatedAt = Date.now();
     saveNow(); render(); toast('뺐습니다');
   }));
 
