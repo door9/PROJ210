@@ -21,6 +21,12 @@ export function defaultState() {
     swaps: [],       // 교체 시뮬레이션 (보유 A → 관심 B 가정)
     loans: [],       // 투자용 대출(마이너스통장 등) 잔액 스냅샷 — 이자 비용 추적
     archives: [],    // 청산한 펀드 세대 (2ⁿ) — 아래 closeFund 참고
+    // 가상 펀드: 실제로 사지 않은 종목을 "그때 샀다면" 굴려 보는 장부. 여러 개 만들 수 있다.
+    // [{id, name, note, positions:[{id, symbol, name, date, price, qty}], createdAt, updatedAt}]
+    // 매수만 있고 매도는 없다 — "그때 사서 지금까지 들고 있었다면"이 이 기능의 질문이므로.
+    // positions를 펀드 안에 품는 이유: 동기화 병합이 id 단위라 펀드 하나가 통째로 오간다.
+    // 두 기기에서 같은 펀드를 동시에 고치면 늦게 저장한 쪽이 이긴다(archives와 같은 방식).
+    virtuals: [],
     deleted: {},     // tombstone: {id: 삭제시각} — 동기화 시 부활 방지
     pendingSymbols: [], // 시세 파일이 아직 없는 심볼 (기기 로컬, 동기화 안 함)
   };

@@ -532,6 +532,57 @@ export function swapRows(state) {
   });
 }
 
+// ---- 가상 펀드 -----------------------------------------------------------------
+// 실제로는 사지 않은 종목을 "그날 그 값에 그만큼 샀다면 지금 얼마인가"로 굴려 보는 장부.
+// 매수만 있고 매도는 없다 — 이 기능의 질문이 "사서 지금까지 들고 있었다면"이므로.
+//
+// 평가는 실제 포트폴리오(lotValue)와 **같은 방식**으로 한다: 매수일 대비 수정종가 성장배수를
+// 원가에 곱한다. 그래야 배당·액면분할이 반영되고, 홈의 보유 종목과 같은 잣대로 읽힌다.
+// (현재가 × 수량으로 계산하면 분할 종목에서 값이 통째로 어긋난다.)
+//
+// 원화 환산: 매입액은 매수일 환율, 평가액은 현재 환율. 그래서 원화 손익에는 환차손익이 포함된다
+// — 실제로 그때 원화로 환전해 샀다면 겪었을 일이라 이 편이 정직하다.
+export function virtualRows(v) {
+  const rows = (v?.positions || []).map(p => {
+    const cur = P.currencyOf(p.symbol);
+    const cost = p.price * p.qty;
+    const g = P.growth(p.symbol, p.date);        // 매수일 → 지금 (배당·분할 반영)
+    const value = g != null ? cost * g : null;
+    return {
+      p, cur, cost, value,
+      ret: g != null ? g - 1 : null,
+      costKRW: P.toKRW(cost, cur, p.date) || 0,
+      valueKRW: value != null ? (P.toKRW(value, cur) || 0) : null,
+      buyClose: P.closeOn(p.symbol, p.date),     // 그날 실제 종가 (입력한 가격과 비교용)
+      lastClose: P.last(p.symbol)?.close ?? null,
+      holdDays: daysBetween(p.date, todayStr()),
+      frozenSince: P.frozenSince(p.symbol),      // 거래정지·상장폐지면 '지금'이 사실 그날이다
+      hasPrice: g != null,
+    };
+  });
+  rows.sort((a, b) => (b.valueKRW ?? 0) - (a.valueKRW ?? 0));
+
+  // 시세가 없는 종목은 합계에서 뺀다 — 원가만 더하면 "손익 0인 자산"처럼 보여 총액이 거짓이 된다.
+  const priced = rows.filter(r => r.hasPrice);
+  const costKRW = priced.reduce((s, r) => s + r.costKRW, 0);
+  const valueKRW = priced.reduce((s, r) => s + (r.valueKRW || 0), 0);
+  for (const r of rows) r.weight = valueKRW > 0 && r.valueKRW ? r.valueKRW / valueKRW : 0;
+
+  return {
+    rows, costKRW, valueKRW,
+    profitKRW: valueKRW - costKRW,
+    ret: costKRW > 0 ? valueKRW / costKRW - 1 : null,
+    pending: rows.filter(r => !r.hasPrice).length,   // 시세를 아직 못 받은 종목 수
+  };
+}
+
+// 가상 펀드 목록 — 평가액 큰 순
+export function virtualFunds(state) {
+  return [...(state.virtuals || [])]
+    .map(v => ({ v, sum: virtualRows(v) }))
+    .sort((a, b) => b.sum.valueKRW - a.sum.valueKRW);
+}
+
 // ---- 투자 비용: 대출 이자 (계좌별 독립) ----------------------------------------
 // loans: 대출 계좌 목록 [{name, balance, rate(연%), startDate, endDate(null=보유중), note}].
 // 각 계좌는 startDate부터 endDate(없으면 오늘)까지 병렬로 이자가 쌓인다(잔액×연율×일수/365).

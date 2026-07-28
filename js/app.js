@@ -9,6 +9,7 @@ import './views-main.js';
 import './views-insight.js';
 import './views-write.js';
 import './views-funds.js';
+import './views-virtual.js';
 
 async function init() {
   // Dropbox OAuth 복귀 처리

@@ -70,6 +70,8 @@ export const ICONS = {
   lock: svg('<rect x="4.8" y="10.5" width="14.4" height="9.7" rx="2"/><path d="M8.2 10.5V7.6a3.8 3.8 0 017.6 0v2.9"/>'),
   // 겹쳐 쌓인 장부 = 청산하고 다시 시작한 펀드 세대
   funds: svg('<rect x="3.5" y="8.5" width="12" height="12" rx="2"/><path d="M7.5 8.5V5.5a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2h-3"/>'),
+  // 점선 장부 = 실재하지 않는 가상 펀드
+  virtual: svg('<rect x="4" y="4" width="16" height="16" rx="2.5" stroke-dasharray="3 2.6"/><path d="M8.5 14.5l3-3.2 2.2 2.2 3-3.6"/>'),
 };
 
 // 모바일 하단 탭. 순서는 상단바 메뉴와 같게 유지한다(일지가 관심보다 앞).
@@ -83,7 +85,7 @@ export const NAV = [
 // 순서 = 왼쪽부터 표시. 넘치면 뒤쪽부터 '더보기'로 접히므로, 자주 쓰는 것을 앞에 둔다.
 export const NAV_DESKTOP = [
   ['home', '홈'], ['trades', '기록'], ['diary', '일지'], ['returns', '수익'], ['cost', '비용'], ['worlds', '만약'],
-  ['actions', '회상'], ['watch', '관심'], ['quotes', '글귀'], ['letters', '서한'], ['ai', '복기'], ['funds', '2ⁿ'], ['settings', '설정'],
+  ['actions', '회상'], ['virtual', '가상'], ['watch', '관심'], ['quotes', '글귀'], ['letters', '서한'], ['ai', '복기'], ['funds', '2ⁿ'], ['settings', '설정'],
 ];
 
 export function currentRoute() {
