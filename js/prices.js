@@ -308,12 +308,22 @@ export function toKRW(amount, currency, date = null) {
   return amount;
 }
 
-// KR 6자리 코드 → 실제 심볼 추정 (.KS / .KQ). 시세 파일이 있으면 그걸 우선.
+// 한국 종목 코드인가 — 6자리 숫자(005930), 또는 숫자로 시작하는 6자리 영숫자(0167A0).
+// 후자는 KRX가 새로 쓰는 형식(ETF·신주 등)이라 숫자만 보면 놓친다. 실제로 0167A0을
+// 그대로 야후에 보내 404가 났고, 시세가 없어 평가가 통째로 계산되지 않았다.
+const KR_CODE = /^\d{4}[0-9A-Z]{2}$/;
+
+// KR 코드 → 실제 심볼 추정 (.KS / .KQ). 시세 파일이 있으면 그걸 우선.
+//
+// 주의: 미등록 코드는 .KS로 찍는데 이게 늘 맞지는 않는다. 야후는 코스닥 종목의 .KS
+// 형태에도 응답하지만 최근 며칠짜리 껍데기 계열을 준다(099190.KS는 7봉). 이름은 정상으로
+// 나와 겉보기엔 멀쩡하고, 과거 매수일의 시세만 없어 평가가 조용히 비는 함정이 있다.
+// 그래서 첫 봉(firstDate)이 매수일보다 뒤면 화면에서 따로 알린다(engine.virtualRows의 noHistory).
 export function resolveSymbol(input) {
   const s = input.trim().toUpperCase();
   if (!s) return null;
   if (map.has(s)) return s;
-  if (/^\d{6}$/.test(s)) {
+  if (KR_CODE.test(s)) {
     if (map.has(s + '.KS')) return s + '.KS';
     if (map.has(s + '.KQ')) return s + '.KQ';
     return s + '.KS'; // 미등록이면 일단 코스피로 추정

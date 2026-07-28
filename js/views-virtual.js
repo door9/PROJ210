@@ -159,7 +159,8 @@ function fundDetail(v, sum) {
     // 나눠 산 건들은 종목 아래에 접어 둔다 — 합산이 기본, 낱건은 참고용(그리고 지우려면 필요하다).
     const lotLines = r.lots.map(l => `
       <div style="display:flex; gap:8px; align-items:center; margin-top:3px;">
-        <span class="muted small">${l.p.date} · ${fmtQty(l.p.qty)}주 @ ${fmtMoney(l.p.price, r.cur)}${l.hasPrice ? '' : ' · 시세 대기'}</span>
+        <span class="muted small">${l.p.date} · ${fmtQty(l.p.qty)}주 @ ${fmtMoney(l.p.price, r.cur)}${
+          l.hasPrice ? '' : (l.noHistory ? ' · <b class="down">매수일 시세 없음</b>' : ' · 시세 대기')}</span>
         <button class="btn small danger" style="padding:1px 7px; line-height:1.5;"
                 data-delpos="${v.id}|${l.p.id}" title="이 매수 건 빼기">✕</button>
       </div>`).join('');
@@ -187,7 +188,12 @@ function fundDetail(v, sum) {
       <tr><th>종목</th><th class="num">매입액</th><th class="num">평가액</th><th class="num">수익률</th></tr>
       ${body}
     </table></div>
-    ${sum.pending ? `<div class="warnbox" style="margin-top:8px;">시세를 아직 못 받은 매수 ${sum.pending}건은 합계에서 뺐습니다 — 몇 분 뒤 자동으로 채워집니다.</div>` : ''}
+    ${sum.bad ? `<div class="warnbox" style="margin-top:8px;">
+      <b>매수 ${sum.bad}건은 종목코드를 확인해 주세요.</b> 시세는 받아 왔는데 <b>매수일보다 늦게 시작</b>합니다 —
+      코스닥 종목을 <code>.KS</code>로 넣으면 이런 일이 생깁니다(야후가 최근 며칠짜리 껍데기를 줍니다).
+      그 건을 ✕로 빼고 <code>.KQ</code>를 붙여 다시 넣으면 됩니다. 합계에서는 빼 두었습니다.
+    </div>` : ''}
+    ${sum.pending - sum.bad > 0 ? `<div class="warnbox" style="margin-top:8px;">시세를 아직 못 받은 매수 ${sum.pending - sum.bad}건은 합계에서 뺐습니다 — 몇 분 뒤 자동으로 채워집니다.</div>` : ''}
     <p class="hint">같은 종목을 여러 번 샀으면 <b>한 줄로 합산</b>합니다 — 수익률은 매입액 전체 대비이고, 평균 단가는 수량으로 가중한 값입니다.
     평가액은 매수 건마다 그날 이후의 <b>수정종가</b> 변동을 적용해 더한 값입니다(배당·액면분할 반영) — 홈의 보유 종목과 같은 방식.
     종목 수익률은 그 종목 통화 기준이라 환율 영향이 없고, 위 원화 합계에는 환율 변동이 포함됩니다.</p>`;

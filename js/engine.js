@@ -551,9 +551,15 @@ export function virtualRows(v) {
     const cur = P.currencyOf(p.symbol);
     const cost = p.price * p.qty;
     const g = P.growth(p.symbol, p.date);        // 매수일 → 지금 (배당·분할 반영)
+    const first = P.firstDate(p.symbol);         // 그 종목 시세의 첫 봉 날짜 (없으면 null)
     const lot = {
       p, cost, g,
       hasPrice: g != null,
+      // 평가가 안 되는 이유는 둘이고, 사용자가 할 일이 서로 다르다.
+      //  - 아직 시세 파일 자체가 없다 → 기다리면 된다
+      //  - 시세는 있는데 첫 봉이 매수일보다 뒤다 → 종목코드가 틀렸을 가능성이 크다
+      //    (코스닥 종목을 .KS로 잡으면 야후가 최근 며칠짜리 껍데기를 준다)
+      noHistory: g == null && !!first && first > p.date,
       value: g != null ? cost * g : null,
       costKRW: P.toKRW(cost, cur, p.date) || 0,  // 매입액은 산 날의 환율
       buyClose: P.closeOn(p.symbol, p.date),     // 그날 실제 종가 (입력값과 비교용)
@@ -587,6 +593,7 @@ export function virtualRows(v) {
       ret: cost > 0 ? value / cost - 1 : null,
       buys: r.lots.length,                       // 몇 번에 나눠 샀나
       pendingLots: r.lots.length - priced.length,
+      badLots: r.lots.filter(l => l.noHistory).length,   // 종목코드 의심 (매수일 이전 시세 없음)
       hasPrice: priced.length > 0,
       firstDate: r.lots[0]?.p.date || null,
       holdDays: priced.length ? Math.max(...priced.map(l => l.holdDays)) : null,
@@ -603,6 +610,7 @@ export function virtualRows(v) {
     profitKRW: valueKRW - costKRW,
     ret: costKRW > 0 ? valueKRW / costKRW - 1 : null,
     pending: rows.reduce((s, r) => s + r.pendingLots, 0),   // 시세를 아직 못 받은 매수 건수
+    bad: rows.reduce((s, r) => s + r.badLots, 0),           // 그중 종목코드가 의심스러운 건수
   };
 }
 
