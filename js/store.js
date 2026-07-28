@@ -20,6 +20,10 @@ export function defaultState() {
     watchlist: [],   // 관심 종목 (안 산 판단의 기록)
     swaps: [],       // 교체 시뮬레이션 (보유 A → 관심 B 가정)
     loans: [],       // 투자용 대출(마이너스통장 등) 잔액 스냅샷 — 이자 비용 추적
+    // 환전 내역(선택). 안 넣으면 앱이 매수 시점 시장 환율로 알아서 환전했다고 본다.
+    // 넣으면 그 기록이 우선한다 — 실제 적용 환율과 수수료가 반영돼 원금이 정확해진다.
+    // [{id, date, from:'KRW'|'USD', amount(보낸 금액, from 통화), rate(원/달러), fee(from 통화), note}]
+    exchanges: [],
     archives: [],    // 청산한 펀드 세대 (2ⁿ) — 아래 closeFund 참고
     // 가상 펀드: 실제로 사지 않은 종목을 "그때 샀다면" 굴려 보는 장부. 여러 개 만들 수 있다.
     // [{id, name, note, positions:[{id, symbol, name, date, price, qty}], createdAt, updatedAt}]
@@ -36,7 +40,7 @@ export function defaultState() {
 //
 // 청산 시 보관하고 비우는 기록. 글귀 서랍(quotes)은 펀드가 아니라 책에서 온 것이라 남긴다.
 // 설정(저장소·PIN·예금 가정 금리)도 앱 설정이지 펀드 기록이 아니므로 남는다.
-export const FUND_COLLS = ['trades', 'diary', 'principles', 'letters', 'watchlist', 'swaps', 'loans'];
+export const FUND_COLLS = ['trades', 'diary', 'principles', 'letters', 'watchlist', 'swaps', 'loans', 'exchanges'];
 
 // 지금 펀드를 청산해 archives에 넣고 장부를 비운다.
 // summary는 engine.fundSummary가 청산 시점에 계산한 성적표 — 열람할 때 다시 계산하지 않는다.

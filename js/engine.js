@@ -100,9 +100,40 @@ export function capitalLedger(state, upto = null) {
   const events = [];
   const entries = cashLog(state).filter(e => !upto || e.date <= upto);
   let ei = 0;
+  const fxs = exchangeLog(state).filter(x => !upto || x.date <= upto);
+  let xi = 0;
 
   const push = (date, cur, amt, src) => {
     if (Math.abs(amt) > 1e-9) events.push({ date, cur, amt, amtKRW: P.toKRW(amt, cur, date) || 0, src });
+  };
+
+  // 사용자가 적어 둔 환전 한 건을 반영한다.
+  //
+  // 환전은 새 돈이 아니라 **통화 사이의 이동**이므로 나간 통화의 원금을 줄이고 들어온 통화의
+  // 원금을 늘린다(아래 매수 시 자동 환전과 같은 원칙). 다른 점은 두 가지다.
+  //  - 환율이 시장 중간값이 아니라 **실제 적용 환율**이다(스프레드 포함).
+  //  - **수수료**는 자본 이동이 아니라 비용이다. 장부(pool)에서는 빠지지만 원금에서는 빼지 않는다
+  //    — 빼 버리면 수수료만큼 원금이 줄어 수익률이 되레 좋아 보인다. 비용은 평가액을 깎아야 한다.
+  const applyExchange = (x) => {
+    const from = x.from === 'USD' ? 'USD' : 'KRW';
+    const to = from === 'KRW' ? 'USD' : 'KRW';
+    const rate = Number(x.rate) || 0;
+    if (!(rate > 0)) return;
+    const sent = Math.max(0, Number(x.amount) || 0);
+    const fee = Math.max(0, Number(x.fee) || 0);
+    const net = Math.max(0, sent - fee);                       // 수수료를 뺀 실제 환전액
+    const got = from === 'KRW' ? net / rate : net * rate;
+
+    // 장부에 그 돈이 없으면 밖에서 새로 들여와 환전한 것이다 → 그만큼은 새 외부 자금
+    const avail = Math.max(0, pool[from]);
+    const fromPool = Math.min(avail, sent);
+    const ext = sent - fromPool;
+    if (ext > 1e-9) { netCap[from] += ext; push(x.date, from, ext, 'trade'); }
+
+    pool[from] = avail - fromPool;
+    pool[to] += got;
+    netCap[from] -= net;
+    netCap[to] += got;
   };
   // 첫 현금 입력은 '자본 이동'이 아니라 '기준 맞추기'다.
   //
@@ -134,10 +165,12 @@ export function capitalLedger(state, upto = null) {
   for (const t of trades) {
     if (upto && t.date > upto) break;
     while (ei < entries.length && entries[ei].date < t.date) applyCashEntry(entries[ei++]);
+    // 환전은 그날의 매매보다 먼저 반영한다 — 환전해서 그 돈으로 사는 게 실제 순서이므로.
+    while (xi < fxs.length && fxs[xi].date <= t.date) applyExchange(fxs[xi++]);
     const cur = P.currencyOf(t.symbol);
     if (t.side === 'buy') {
       const cost = t.price * t.qty + (t.fee || 0);
-      const fromPool = Math.min(pool[cur], cost);
+      const fromPool = Math.min(Math.max(0, pool[cur]), cost);
       pool[cur] -= fromPool;
       let short = cost - fromPool;
 
@@ -169,6 +202,7 @@ export function capitalLedger(state, upto = null) {
       pool[cur] += t.price * t.qty - (t.fee || 0);
     }
   }
+  while (xi < fxs.length) applyExchange(fxs[xi++]);
   while (ei < entries.length) applyCashEntry(entries[ei++]);
 
   events.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
@@ -180,6 +214,25 @@ export function capitalLedger(state, upto = null) {
 // 특정 시점의 현금 = 그 날짜 이하 마지막 입력값. 첫 입력 전에는 현금 0(= 주식만 합산).
 export function cashLog(state) {
   return [...(state.settings?.cashLog || [])].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+}
+
+// ---- 환전 내역 (선택 입력) ------------------------------------------------------
+// 안 넣으면 앱이 매수 시점 시장 환율로 알아서 환전했다고 본다(기본 동작).
+// 넣으면 그 기록이 우선한다 — 실제 적용 환율(스프레드 포함)과 수수료가 반영된다.
+export function exchangeLog(state) {
+  return [...(state.exchanges || [])].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+}
+
+// 환전 한 건의 계산 결과 (화면 표시·미리보기 공용)
+export function exchangeCalc({ from, amount, rate, fee }) {
+  const f = from === 'USD' ? 'USD' : 'KRW';
+  const to = f === 'KRW' ? 'USD' : 'KRW';
+  const r = Number(rate) || 0;
+  const sent = Math.max(0, Number(amount) || 0);
+  const feeAmt = Math.max(0, Number(fee) || 0);
+  const net = Math.max(0, sent - feeAmt);
+  const got = r > 0 ? (f === 'KRW' ? net / r : net * r) : null;
+  return { from: f, to, sent, fee: feeAmt, net, rate: r, got };
 }
 
 // 그 시점에 적용 중인 입력 한 줄 (없으면 null). 값이 언제 넣은 것인지 표시할 때도 쓴다.

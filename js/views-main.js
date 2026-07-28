@@ -3,7 +3,7 @@ import { state, saveNow, toast, openModal, closeModal, confirmModal, registerVie
 import * as Store from './store.js';
 import * as P from './prices.js';
 import * as E from './engine.js';
-import { uid, todayStr, esc, fmtMoney, fmtSigned, fmtPct, fmtQty, fmtFx, pctClass, quarterOf } from './util.js';
+import { uid, todayStr, esc, fmtMoney, fmtSigned, fmtPct, fmtQty, fmtFx, pctClass, quarterOf, bindKrArrowStep } from './util.js';
 import * as Dbx from './dropbox.js';
 import * as Lock from './lock.js';
 import { sparkline, lineChart, bindCharts } from './chart.js';
@@ -243,11 +243,103 @@ function bindTradeItems(root) {
 }
 
 // ---------- 기록 ----------
+// ---------- 환전 기록 폼 ----------
+// 실제 증권사 화면에 적힌 대로 넣게 한다: 보낸 금액 · 적용 환율 · 수수료.
+// 받은 금액은 그 셋에서 계산해 즉시 보여 준다 — 명세서 숫자와 눈으로 대조하라는 뜻.
+function openExchangeForm() {
+  const today = todayStr();
+  const m = openModal(`
+    <h2>환전 기록</h2>
+    <form id="fx-form">
+      <div class="form-grid">
+        <label class="fld">날짜
+          <input type="date" name="date" max="${today}" value="${today}" required>
+        </label>
+        <label class="fld">방향
+          <select name="from">
+            <option value="KRW">원화 → 달러</option>
+            <option value="USD">달러 → 원화</option>
+          </select>
+        </label>
+        <label class="fld">보낸 금액 <span class="muted small" data-fxcur>(원)</span>
+          <input name="amount" type="number" step="any" min="0" required>
+        </label>
+        <label class="fld">적용 환율 (원/달러)
+          <input name="rate" type="number" step="any" min="0" required placeholder="예: 1385.5">
+        </label>
+        <label class="fld">환전 수수료 <span class="muted small" data-fxcur2>(원)</span>
+          <input name="fee" type="number" step="any" min="0" placeholder="0">
+        </label>
+        <label class="fld full">메모 (선택)
+          <input name="note" maxlength="60" placeholder="예: 통합증거금 자동환전">
+        </label>
+      </div>
+      <div class="notice" style="margin:10px 0 0;">받게 되는 금액: <b data-fxgot>–</b>
+        <br><span class="small">증권사 명세서의 금액과 같은지 확인해 주세요. 다르면 환율이나 수수료를 조정하시면 됩니다.</span></div>
+      <div class="btn-row" style="justify-content:flex-end; margin-top:16px;">
+        <button class="btn" type="button" data-x="cancel">취소</button>
+        <button class="btn primary" type="submit">저장</button>
+      </div>
+    </form>`);
+  m.querySelector('[data-x=cancel]').addEventListener('click', closeModal);
+  const f = m.querySelector('#fx-form');
+  const got = m.querySelector('[data-fxgot]');
+
+  const preview = () => {
+    const c = E.exchangeCalc({ from: f.from.value, amount: f.amount.value, rate: f.rate.value, fee: f.fee.value });
+    const unit = c.from === 'KRW' ? '(원)' : '($)';
+    m.querySelector('[data-fxcur]').textContent = unit;
+    m.querySelector('[data-fxcur2]').textContent = unit;
+    got.textContent = c.got != null && c.sent > 0 ? fmtMoney(c.got, c.to) : '–';
+  };
+  ['from', 'amount', 'rate', 'fee'].forEach(n => f[n].addEventListener('input', preview));
+  f.from.addEventListener('change', preview);
+  // 그날 시장 환율을 미리 채워 둔다 — 실제 적용 환율은 여기서 스프레드만큼 벌어진다
+  f.date.addEventListener('change', () => {
+    const r = P.fxOn(f.date.value);
+    if (r && !f.rate.value) { f.rate.placeholder = `그날 시장환율 ${fmtFx(r)}`; }
+  });
+  const r0 = P.fxOn(today);
+  if (r0) f.rate.placeholder = `그날 시장환율 ${fmtFx(r0)}`;
+  preview();
+
+  f.addEventListener('submit', e => {
+    e.preventDefault();
+    const c = E.exchangeCalc({ from: f.from.value, amount: f.amount.value, rate: f.rate.value, fee: f.fee.value });
+    if (!(c.sent > 0)) { toast('보낸 금액을 입력하세요'); return; }
+    if (!(c.rate > 0)) { toast('적용 환율을 입력하세요'); return; }
+    if (c.fee >= c.sent) { toast('수수료가 보낸 금액보다 큽니다'); return; }
+    state.exchanges = [...(state.exchanges || []), {
+      id: uid(), date: f.date.value, from: c.from,
+      amount: c.sent, rate: c.rate, fee: c.fee,
+      note: f.note.value.trim(),
+      createdAt: Date.now(), updatedAt: Date.now(),
+    }];
+    saveNow(); closeModal(); render();
+    toast(`환전을 기록했습니다 — ${fmtMoney(c.got, c.to)} 수령`);
+  });
+}
+
 function vTrades() {
   const trades = E.sortedTrades(state).reverse();
   const { realized } = E.replay(E.sortedTrades(state));
   const retBySell = new Map(realized.map(r => [r.sell.id, r]));
   const items = trades.map(t => tradeItemHtml(t, retBySell.get(t.id))).join('');
+
+  const fxs = E.exchangeLog(state).slice().reverse();
+  const fxItems = fxs.map(x => {
+    const c = E.exchangeCalc(x);
+    return `
+    <li>
+      <div class="trade-head">
+        <b>${c.from === 'KRW' ? '원화 → 달러' : '달러 → 원화'}</b>
+        <span class="dt muted small">${x.date} · 적용환율 ${fmtFx(c.rate)}${c.fee ? ` · 수수료 ${fmtMoney(c.fee, c.from)}` : ''}</span>
+        <span class="amt small">${fmtMoney(c.sent, c.from)} → ${c.got != null ? fmtMoney(c.got, c.to) : '–'}</span>
+      </div>
+      ${x.note ? `<div class="trade-body">${esc(x.note)}</div>` : ''}
+      <div class="trade-meta"><span style="margin-left:auto;"><button class="btn small danger" data-delfx="${x.id}">삭제</button></span></div>
+    </li>`;
+  }).join('');
 
   return `
     <div class="view-title">매매 기록</div>
@@ -258,11 +350,33 @@ function vTrades() {
     </div>
     <div class="card">
       ${items || '<div class="empty">아직 기록이 없습니다</div>'}
+    </div>
+    <div class="card">
+      <h3>환전 내역 <span class="muted small">— 선택 입력</span></h3>
+      <p class="small muted" style="margin:4px 0 0;">
+        안 넣어도 됩니다. 그때는 앱이 <b>매수 시점의 시장 환율</b>로 환전했다고 보고 계산합니다.
+        실제 적용 환율과 수수료를 넣으면 그 기록이 우선해 원금이 더 정확해집니다.
+      </p>
+      <div class="btn-row" style="margin:8px 0 0;"><button class="btn small primary" data-act="fx">환전 기록</button></div>
+      ${fxItems ? `<ul class="list-plain">${fxItems}</ul>` : '<div class="empty">아직 환전 기록이 없습니다</div>'}
     </div>`;
 }
 vTrades.bind_ = (root) => {
   root.querySelector('[data-act=buy]').addEventListener('click', () => openTradeForm('buy'));
   root.querySelector('[data-act=sell]').addEventListener('click', () => openTradeForm('sell'));
+  root.querySelector('[data-act=fx]').addEventListener('click', () => openExchangeForm());
+  root.querySelectorAll('[data-delfx]').forEach(b => b.addEventListener('click', async () => {
+    const x = (state.exchanges || []).find(e => e.id === b.dataset.delfx);
+    if (!x) return;
+    const c = E.exchangeCalc(x);
+    if (!await confirmModal({
+      title: '이 환전 기록을 지울까요?',
+      body: `${x.date} · ${fmtMoney(c.sent, c.from)} → ${c.got != null ? fmtMoney(c.got, c.to) : '–'}\n\n지우면 그 환전은 다시 '매수 시점 시장 환율'로 자동 계산됩니다.`,
+      okLabel: '지우기', danger: true,
+    })) return;
+    Store.removeItem(state, 'exchanges', b.dataset.delfx);
+    saveNow(); render(); toast('지웠습니다');
+  }));
   bindTradeItems(root);
 };
 registerView('trades', vTrades);
@@ -494,6 +608,11 @@ export function openTradeForm(side, existing = null) {
     }
   }
   form.symbol.addEventListener('change', updateSymbolInfo);
+  // 가격칸 방향키 — 한국 종목이면 호가 단위로, 그 외(달러 등)는 기본(±1) 동작.
+  bindKrArrowStep(form.price, () => {
+    const raw = form.symbol.value;
+    return raw ? P.currencyOf(P.resolveSymbol(raw)) : null;
+  });
   if (!isBuy) {
     const renderPastRecord = () => {
       const sym = form.symbol.value;
