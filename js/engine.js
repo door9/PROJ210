@@ -542,37 +542,65 @@ export function swapRows(state) {
 //
 // 원화 환산: 매입액은 매수일 환율, 평가액은 현재 환율. 그래서 원화 손익에는 환차손익이 포함된다
 // — 실제로 그때 원화로 환전해 샀다면 겪었을 일이라 이 편이 정직하다.
+// 같은 종목은 한 줄로 합친다 — 나눠 산 것도 결국 한 종목의 보유분이므로.
+// 매수 건마다 성장배수가 다르므로(산 날이 다르니) 평가는 건별로 계산해 더한다.
+// 평균 단가는 그 합계에서 역산한다(가중평균) — 단순 평균을 내면 수량이 다를 때 거짓이 된다.
 export function virtualRows(v) {
-  const rows = (v?.positions || []).map(p => {
+  const bySym = new Map();
+  for (const p of v?.positions || []) {
     const cur = P.currencyOf(p.symbol);
     const cost = p.price * p.qty;
     const g = P.growth(p.symbol, p.date);        // 매수일 → 지금 (배당·분할 반영)
-    const value = g != null ? cost * g : null;
-    return {
-      p, cur, cost, value,
-      ret: g != null ? g - 1 : null,
-      costKRW: P.toKRW(cost, cur, p.date) || 0,
-      valueKRW: value != null ? (P.toKRW(value, cur) || 0) : null,
-      buyClose: P.closeOn(p.symbol, p.date),     // 그날 실제 종가 (입력한 가격과 비교용)
-      lastClose: P.last(p.symbol)?.close ?? null,
-      holdDays: daysBetween(p.date, todayStr()),
-      frozenSince: P.frozenSince(p.symbol),      // 거래정지·상장폐지면 '지금'이 사실 그날이다
+    const lot = {
+      p, cost, g,
       hasPrice: g != null,
+      value: g != null ? cost * g : null,
+      costKRW: P.toKRW(cost, cur, p.date) || 0,  // 매입액은 산 날의 환율
+      buyClose: P.closeOn(p.symbol, p.date),     // 그날 실제 종가 (입력값과 비교용)
+      holdDays: daysBetween(p.date, todayStr()),
+    };
+    if (!bySym.has(p.symbol)) {
+      bySym.set(p.symbol, {
+        symbol: p.symbol, name: p.name || p.symbol, cur, lots: [],
+        lastClose: P.last(p.symbol)?.close ?? null,
+        frozenSince: P.frozenSince(p.symbol),    // 거래정지·상장폐지면 '지금'이 사실 그날이다
+      });
+    }
+    bySym.get(p.symbol).lots.push(lot);
+  }
+
+  const rows = [...bySym.values()].map(r => {
+    r.lots.sort((a, b) => a.p.date < b.p.date ? -1 : a.p.date > b.p.date ? 1 : 0);
+    // 집계는 시세가 있는 건만 — 시세를 못 받은 건을 원가로 세면 "손익 0인 자산"이 껴서 총액이 거짓이 된다.
+    const priced = r.lots.filter(l => l.hasPrice);
+    const qty = priced.reduce((s, l) => s + l.p.qty, 0);
+    const cost = priced.reduce((s, l) => s + l.cost, 0);
+    const value = priced.reduce((s, l) => s + l.value, 0);
+    const costKRW = priced.reduce((s, l) => s + l.costKRW, 0);
+    return {
+      ...r,
+      qty, cost, value, costKRW,
+      avgPrice: qty > 0 ? cost / qty : null,     // 가중평균 매입단가
+      valueKRW: priced.length ? (P.toKRW(value, r.cur) || 0) : null,  // 평가액은 지금 환율
+      ret: cost > 0 ? value / cost - 1 : null,
+      buys: r.lots.length,                       // 몇 번에 나눠 샀나
+      pendingLots: r.lots.length - priced.length,
+      hasPrice: priced.length > 0,
+      firstDate: r.lots[0]?.p.date || null,
+      holdDays: priced.length ? Math.max(...priced.map(l => l.holdDays)) : null,
     };
   });
   rows.sort((a, b) => (b.valueKRW ?? 0) - (a.valueKRW ?? 0));
 
-  // 시세가 없는 종목은 합계에서 뺀다 — 원가만 더하면 "손익 0인 자산"처럼 보여 총액이 거짓이 된다.
-  const priced = rows.filter(r => r.hasPrice);
-  const costKRW = priced.reduce((s, r) => s + r.costKRW, 0);
-  const valueKRW = priced.reduce((s, r) => s + (r.valueKRW || 0), 0);
+  const costKRW = rows.reduce((s, r) => s + r.costKRW, 0);
+  const valueKRW = rows.reduce((s, r) => s + (r.valueKRW || 0), 0);
   for (const r of rows) r.weight = valueKRW > 0 && r.valueKRW ? r.valueKRW / valueKRW : 0;
 
   return {
     rows, costKRW, valueKRW,
     profitKRW: valueKRW - costKRW,
     ret: costKRW > 0 ? valueKRW / costKRW - 1 : null,
-    pending: rows.filter(r => !r.hasPrice).length,   // 시세를 아직 못 받은 종목 수
+    pending: rows.reduce((s, r) => s + r.pendingLots, 0),   // 시세를 아직 못 받은 매수 건수
   };
 }
 

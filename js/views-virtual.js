@@ -142,31 +142,41 @@ function fundDetail(v, sum) {
     return `<div class="empty">아직 넣은 종목이 없습니다 — "가상 매수"를 눌러 시작하세요</div>`;
   }
   const body = sum.rows.map(r => {
-    const p = r.p;
+    // 나눠 산 건들은 종목 아래에 접어 둔다 — 합산이 기본, 낱건은 참고용(그리고 지우려면 필요하다).
+    const lotLines = r.lots.map(l => `
+      <div style="display:flex; gap:8px; align-items:center; margin-top:3px;">
+        <span class="muted small">${l.p.date} · ${fmtQty(l.p.qty)}주 @ ${fmtMoney(l.p.price, r.cur)}${l.hasPrice ? '' : ' · 시세 대기'}</span>
+        <button class="btn small danger" style="padding:1px 7px; line-height:1.5;"
+                data-delpos="${v.id}|${l.p.id}" title="이 매수 건 빼기">✕</button>
+      </div>`).join('');
+
     return `
     <tr>
       <td>
-        <b>${esc(p.name || p.symbol)}</b>
-        <br><span class="muted small">${esc(p.symbol)} · ${p.date} · ${fmtQty(p.qty)}주 @ ${fmtMoney(p.price, r.cur)}</span>
+        <b>${esc(r.name)}</b>
+        <br><span class="muted small">${esc(r.symbol)}${r.buys > 1 ? ` · ${r.buys}건 합산` : ''}${r.qty > 0 ? ` · ${fmtQty(r.qty)}주 · 평균 ${fmtMoney(r.avgPrice, r.cur)}` : ''}</span>
         ${r.frozenSince ? `<br><span class="muted small" title="거래정지·상장폐지로 시세가 멈췄습니다">${r.frozenSince} 시세 정지</span>` : ''}
+        ${lotLines}
       </td>
-      <td class="num">${fmtMoney(r.cost, r.cur)}<br><span class="muted small">${fmtMoney(r.costKRW)}</span></td>
+      <td class="num">${r.hasPrice
+        ? `${fmtMoney(r.cost, r.cur)}<br><span class="muted small">${fmtMoney(r.costKRW)}</span>`
+        : '<span class="muted">–</span>'}</td>
       <td class="num">${r.hasPrice
         ? `${fmtMoney(r.value, r.cur)}<br><span class="muted small">${fmtMoney(r.valueKRW)}</span>`
         : '<span class="muted">시세 대기 중</span>'}</td>
-      <td class="num ${pctClass(r.ret)}"><b>${fmtPct(r.ret)}</b>${r.hasPrice ? `<br><span class="muted small">${Math.round(r.holdDays / 30.44)}개월</span>` : ''}</td>
-      <td class="num"><button class="btn small danger" data-delpos="${v.id}|${p.id}">삭제</button></td>
+      <td class="num ${pctClass(r.ret)}"><b>${fmtPct(r.ret)}</b>${r.holdDays != null ? `<br><span class="muted small">최장 ${Math.round(r.holdDays / 30.44)}개월</span>` : ''}</td>
     </tr>`;
   }).join('');
 
   return `
     <div class="tbl-wrap"><table class="tbl">
-      <tr><th>종목</th><th class="num">매입액</th><th class="num">평가액</th><th class="num">수익률</th><th class="num"></th></tr>
+      <tr><th>종목</th><th class="num">매입액</th><th class="num">평가액</th><th class="num">수익률</th></tr>
       ${body}
     </table></div>
-    ${sum.pending ? `<div class="warnbox" style="margin-top:8px;">시세를 아직 못 받은 종목 ${sum.pending}개는 합계에서 뺐습니다 — 몇 분 뒤 자동으로 채워집니다.</div>` : ''}
-    <p class="hint">평가액은 매수일 대비 <b>수정종가</b> 변동을 적용한 값입니다(배당·액면분할 반영) — 홈의 보유 종목과 같은 방식.
-    종목별 수익률은 그 종목 통화 기준이라 환율 영향이 없고, 아래 원화 합계에는 환율 변동이 포함됩니다.</p>`;
+    ${sum.pending ? `<div class="warnbox" style="margin-top:8px;">시세를 아직 못 받은 매수 ${sum.pending}건은 합계에서 뺐습니다 — 몇 분 뒤 자동으로 채워집니다.</div>` : ''}
+    <p class="hint">같은 종목을 여러 번 샀으면 <b>한 줄로 합산</b>합니다 — 수익률은 매입액 전체 대비이고, 평균 단가는 수량으로 가중한 값입니다.
+    평가액은 매수 건마다 그날 이후의 <b>수정종가</b> 변동을 적용해 더한 값입니다(배당·액면분할 반영) — 홈의 보유 종목과 같은 방식.
+    종목 수익률은 그 종목 통화 기준이라 환율 영향이 없고, 위 원화 합계에는 환율 변동이 포함됩니다.</p>`;
 }
 
 // ---------- 목록 ----------
@@ -180,7 +190,7 @@ function vVirtual() {
       <div style="display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap;">
         <div style="min-width:0;">
           <h3 style="margin:0;">${esc(v.name)}</h3>
-          <div class="muted small">종목 ${(v.positions || []).length}개${v.note ? ' · ' + esc(v.note) : ''}</div>
+          <div class="muted small">종목 ${sum.rows.length}개${(v.positions || []).length > sum.rows.length ? ` · 매수 ${(v.positions || []).length}건` : ''}${v.note ? ' · ' + esc(v.note) : ''}</div>
         </div>
         <div style="margin-left:auto; text-align:right; white-space:nowrap;">
           <div style="font-size:17px; font-weight:700;">${sum.rows.length ? fmtMoney(sum.valueKRW) : '–'}</div>
@@ -238,9 +248,10 @@ vVirtual.bind_ = (root) => {
     const v = find(vid);
     if (!v) return;
     const p = (v.positions || []).find(x => x.id === pid);
+    // 같은 종목을 여러 번 샀을 수 있으므로 어느 건인지 날짜·수량으로 못박아 보여 준다
     if (!await confirmModal({
-      title: '이 종목을 뺄까요?',
-      body: `${p?.name || p?.symbol || ''} — 가상 펀드에서만 지워집니다.`,
+      title: '이 매수 건을 뺄까요?',
+      body: p ? `${p.name || p.symbol}\n${p.date} · ${fmtQty(p.qty)}주 @ ${fmtMoney(p.price, P.currencyOf(p.symbol))}` : '',
       okLabel: '빼기', danger: true,
     })) return;
     v.positions = (v.positions || []).filter(x => x.id !== pid);
