@@ -93,3 +93,47 @@ export function esc(s) {
 }
 
 export function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// 한국 증시 호가 단위 — 가격대별 최소 주문 간격 (원)
+export function krTickSize(price) {
+  const p = Number(price) || 0;
+  if (p < 2000) return 1;
+  if (p < 5000) return 5;
+  if (p < 20000) return 10;
+  if (p < 50000) return 50;
+  if (p < 200000) return 100;
+  if (p < 500000) return 500;
+  return 1000;
+}
+
+// 방향키 한 번에 이동할 다음/이전 호가. 현재 값이 호가 단위에 안 맞아도(직접 입력값)
+// 그 방향의 가장 가까운 유효 호가로 스냅한다(HTS와 동일한 동작).
+//
+// 내려갈 때는 tick 을 (p-1) 기준으로 정한다 — p 가 구간 경계값(2000·5000 등)이면
+// 그 경계는 '위쪽' 구간에 속해 tick 이 더 크므로, 그대로 쓰면 바로 아래 구간의
+// 촘촘한 호가들을 건너뛴다(예: 2000원에서 ↓ 누르면 1999원이 아니라 1995원으로
+// 튀는 문제). 실제 KRX 호가는 각 경계값이 그 아래 구간 tick 의 배수라 이렇게
+// 구해도 항상 유효한 호가에 정확히 맞아떨어진다.
+export function krStepPrice(price, dir) {
+  const p = Math.max(0, Math.round(Number(price) || 0));
+  if (dir > 0) {
+    const tick = krTickSize(p);
+    return Math.floor(p / tick) * tick + tick;
+  }
+  const tick = krTickSize(Math.max(0, p - 1));
+  return Math.max(0, Math.ceil(p / tick) * tick - tick);
+}
+
+// 가격 입력칸의 방향키 위/아래를 한국 종목 호가 단위로 스텝하게 만든다.
+// 직접 타이핑은 그대로 1원 단위 자유 입력(step="any" 유지) — 이 바인딩은 키보드
+// ArrowUp/ArrowDown 만 가로챈다. getCurrency() 가 'KRW' 가 아니면 브라우저 기본 동작(±1) 유지.
+export function bindKrArrowStep(input, getCurrency) {
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    if (getCurrency() !== 'KRW') return;
+    e.preventDefault();
+    const next = krStepPrice(parseFloat(input.value) || 0, e.key === 'ArrowUp' ? 1 : -1);
+    input.value = String(next);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
