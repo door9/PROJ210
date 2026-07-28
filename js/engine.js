@@ -139,9 +139,32 @@ export function capitalLedger(state, upto = null) {
       const cost = t.price * t.qty + (t.fee || 0);
       const fromPool = Math.min(pool[cur], cost);
       pool[cur] -= fromPool;
-      const ext = cost - fromPool;
-      netCap[cur] += ext;
-      push(t.date, cur, ext, 'trade');
+      let short = cost - fromPool;
+
+      // 같은 통화로 모자라면 다른 통화 장부에서 그날 환율로 끌어다 쓴다.
+      // 증권사(통합증거금)가 실제로 하는 일이다 — 한국 주식을 판 원화로 미국 주식을 산다.
+      // 이걸 모르면 앱은 그 매수를 '밖에서 새로 들어온 돈'으로 세고, 쓰인 원화는 장부에
+      // 계속 남아 있다가 현금을 입력하는 날 '나간 돈'으로 둔갑한다(같은 돈을 두 번 잘못 셈).
+      //
+      // 환전은 새 돈이 아니라 **슬리브 사이의 이동**이다. 그래서 외부 자금 사건(push)을
+      // 만들지 않고, 나간 통화의 원금을 줄이고 들어온 통화의 원금을 늘린다. 그래야 각 통화의
+      // 원금이 '그 통화에 실제로 잠긴 돈'과 맞아 수익률이 통화별로 정직해진다.
+      if (short > 1e-9) {
+        const other = cur === 'KRW' ? 'USD' : 'KRW';
+        const fx = P.fxOn(t.date);   // 원/달러
+        if (fx > 0 && pool[other] > 1e-9) {
+          const needOther = cur === 'USD' ? short * fx : short / fx;
+          const useOther = Math.min(pool[other], needOther);
+          const gotCur = cur === 'USD' ? useOther / fx : useOther * fx;
+          pool[other] -= useOther;
+          short = Math.max(0, short - gotCur);
+          netCap[other] -= useOther;
+          netCap[cur] += gotCur;
+        }
+      }
+
+      netCap[cur] += short;
+      push(t.date, cur, short, 'trade');
     } else {
       pool[cur] += t.price * t.qty - (t.fee || 0);
     }
