@@ -561,7 +561,9 @@ export function virtualRows(v) {
     };
     if (!bySym.has(p.symbol)) {
       bySym.set(p.symbol, {
-        symbol: p.symbol, name: p.name || p.symbol, cur, lots: [],
+        // 시세에 등록된 이름을 먼저 쓴다 — 넣을 당시엔 시세가 없어 종목코드가 이름으로
+        // 저장된 건들이 있는데(신규 등록 종목), 그걸 그대로 보여 주면 무슨 종목인지 알 수 없다.
+        symbol: p.symbol, name: P.info(p.symbol)?.name || p.name || p.symbol, cur, lots: [],
         lastClose: P.last(p.symbol)?.close ?? null,
         frozenSince: P.frozenSince(p.symbol),    // 거래정지·상장폐지면 '지금'이 사실 그날이다
       });

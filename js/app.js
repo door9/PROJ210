@@ -74,6 +74,16 @@ function syncNames() {
   for (const t of state.trades) apply(t, 'symbol', 'name');
   for (const w of state.watchlist || []) apply(w, 'symbol', 'name');
   for (const s of state.swaps || []) { apply(s, 'fromSymbol', 'fromName'); apply(s, 'toSymbol', 'toName'); }
+  // 가상 펀드의 매수 건은 펀드 안에 들어 있다 — 이름이 바뀌면 건이 아니라 '펀드'의 시각을
+  // 올려야 동기화가 전파한다(병합 단위가 펀드이므로).
+  for (const v of state.virtuals || []) {
+    let touched = false;
+    for (const p of v.positions || []) {
+      const info = P.info(p.symbol);
+      if (info && p.name !== info.name) { p.name = info.name; touched = true; }
+    }
+    if (touched) { v.updatedAt = Date.now(); changed = true; }
+  }
   if (changed) { Store.save(state); Sync.schedule(); }
 }
 

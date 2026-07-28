@@ -251,7 +251,7 @@ vVirtual.bind_ = (root) => {
     // 같은 종목을 여러 번 샀을 수 있으므로 어느 건인지 날짜·수량으로 못박아 보여 준다
     if (!await confirmModal({
       title: '이 매수 건을 뺄까요?',
-      body: p ? `${p.name || p.symbol}\n${p.date} · ${fmtQty(p.qty)}주 @ ${fmtMoney(p.price, P.currencyOf(p.symbol))}` : '',
+      body: p ? `${P.info(p.symbol)?.name || p.name || p.symbol}\n${p.date} · ${fmtQty(p.qty)}주 @ ${fmtMoney(p.price, P.currencyOf(p.symbol))}` : '',
       okLabel: '빼기', danger: true,
     })) return;
     v.positions = (v.positions || []).filter(x => x.id !== pid);
