@@ -24,6 +24,11 @@ export function defaultState() {
     // 넣으면 그 기록이 우선한다 — 실제 적용 환율과 수수료가 반영돼 원금이 정확해진다.
     // [{id, date, from:'KRW'|'USD', amount(보낸 금액, from 통화), rate(원/달러), fee(from 통화), note}]
     exchanges: [],
+    // 현금 입출금. 펀드 밖으로 뺀 돈·새로 넣은 돈을 **사용자가 확정해서** 남기는 기록.
+    // 이게 없으면 앱은 현금 잔액 입력값과 장부의 차이를 보고 오갔다고 '추정'할 수밖에 없는데,
+    // 그 추정이 유령 유출을 만든 적이 있다. 이제 자본이 오간 판단은 이 기록만 한다.
+    // [{id, date, kind:'in'|'out', cur:'KRW'|'USD', amount, note}]
+    cashMoves: [],
     archives: [],    // 청산한 펀드 세대 (2ⁿ) — 아래 closeFund 참고
     // 가상 펀드: 실제로 사지 않은 종목을 "그때 샀다면" 굴려 보는 장부. 여러 개 만들 수 있다.
     // [{id, name, note, positions:[{id, symbol, name, date, price, qty}], createdAt, updatedAt}]
@@ -40,7 +45,7 @@ export function defaultState() {
 //
 // 청산 시 보관하고 비우는 기록. 글귀 서랍(quotes)은 펀드가 아니라 책에서 온 것이라 남긴다.
 // 설정(저장소·PIN·예금 가정 금리)도 앱 설정이지 펀드 기록이 아니므로 남는다.
-export const FUND_COLLS = ['trades', 'diary', 'principles', 'letters', 'watchlist', 'swaps', 'loans', 'exchanges'];
+export const FUND_COLLS = ['trades', 'diary', 'principles', 'letters', 'watchlist', 'swaps', 'loans', 'exchanges', 'cashMoves'];
 
 // 지금 펀드를 청산해 archives에 넣고 장부를 비운다.
 // summary는 engine.fundSummary가 청산 시점에 계산한 성적표 — 열람할 때 다시 계산하지 않는다.

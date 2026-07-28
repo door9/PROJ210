@@ -102,6 +102,8 @@ export function capitalLedger(state, upto = null) {
   let ei = 0;
   const fxs = exchangeLog(state).filter(x => !upto || x.date <= upto);
   let xi = 0;
+  const moves = cashMoveLog(state).filter(m => !upto || m.date <= upto);
+  let mi = 0;
 
   const push = (date, cur, amt, src) => {
     if (Math.abs(amt) > 1e-9) events.push({ date, cur, amt, amtKRW: P.toKRW(amt, cur, date) || 0, src });
@@ -146,26 +148,30 @@ export function capitalLedger(state, upto = null) {
   // 뭉쳐 '순유출 610만원'이라는 없는 사건으로 나타났다. 그 종목들의 매매 기록은 지웠는데
   // 그 돈만 유령처럼 남은 셈이라 — 들어온 기록 없이 나간 기록만 있는 비대칭이었다.
   //
-  // 두 번째 입력부터는 다르다. 직전에 확인한 '진짜 잔액'이 기준이므로, 거기서 벌어진 차이는
-  // 그 사이에 실제로 오간 돈이 맞다. 그래서 그때부터는 자본 이동으로 센다.
-  let calibrated = false;
+  // 그리고 **모든** 현금 입력을 그렇게 다룬다. 잔액이 장부보다 적다고 해서 그게 인출인지,
+  // 기록하지 않은 수수료·배당·세금 때문인지 앱은 알 수 없다. 추정으로 자본을 움직이면
+  // 없는 사건이 만들어진다. 그래서 현금 입력은 '장부를 실제 값에 맞추는 일'만 하고,
+  // 자본이 오갔다는 판단은 사용자가 남긴 입출금 기록(cashMoves)만 한다.
   const applyCashEntry = (e) => {
-    for (const cur of ['KRW', 'USD']) {
-      const declared = e[cur] || 0;
-      const diff = declared - pool[cur];   // 장부보다 많으면 밖에서 온 돈, 적으면 인출
-      if (calibrated) {
-        netCap[cur] += diff;
-        push(e.date, cur, diff, 'cash');
-      }
-      pool[cur] = declared;
-    }
-    calibrated = true;
+    for (const cur of ['KRW', 'USD']) pool[cur] = e[cur] || 0;
+  };
+
+  // 사용자가 확정한 입출금. 이것만이 현금 쪽 자본 이동의 근거다.
+  const applyMove = (mv) => {
+    const cur = mv.cur === 'USD' ? 'USD' : 'KRW';
+    const amt = Math.max(0, Number(mv.amount) || 0);
+    if (amt <= 0) return;
+    const signed = mv.kind === 'out' ? -amt : amt;
+    pool[cur] += signed;
+    netCap[cur] += signed;
+    push(mv.date, cur, signed, 'cash');
   };
 
   for (const t of trades) {
     if (upto && t.date > upto) break;
     while (ei < entries.length && entries[ei].date < t.date) applyCashEntry(entries[ei++]);
-    // 환전은 그날의 매매보다 먼저 반영한다 — 환전해서 그 돈으로 사는 게 실제 순서이므로.
+    // 입출금·환전은 그날의 매매보다 먼저 반영한다 — 돈을 넣고(바꾸고) 사는 게 실제 순서이므로.
+    while (mi < moves.length && moves[mi].date <= t.date) applyMove(moves[mi++]);
     while (xi < fxs.length && fxs[xi].date <= t.date) applyExchange(fxs[xi++]);
     const cur = P.currencyOf(t.symbol);
     if (t.side === 'buy') {
@@ -202,6 +208,7 @@ export function capitalLedger(state, upto = null) {
       pool[cur] += t.price * t.qty - (t.fee || 0);
     }
   }
+  while (mi < moves.length) applyMove(moves[mi++]);
   while (xi < fxs.length) applyExchange(fxs[xi++]);
   while (ei < entries.length) applyCashEntry(entries[ei++]);
 
@@ -221,6 +228,31 @@ export function cashLog(state) {
 // 넣으면 그 기록이 우선한다 — 실제 적용 환율(스프레드 포함)과 수수료가 반영된다.
 export function exchangeLog(state) {
   return [...(state.exchanges || [])].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+}
+
+// ---- 현금 입출금 (사용자가 확정하는 기록) ---------------------------------------
+export function cashMoveLog(state) {
+  return [...(state.cashMoves || [])].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+}
+
+// 마지막 현금 입력 시점에 '앱 장부'와 '입력한 실제 잔액'이 얼마나 벌어졌나.
+// 앱은 이 차이를 자본 이동으로 넘겨짚지 않는다 — 대신 화면에서 보여 주고, 그게 인출이면
+// 출금 기록을 남기라고 안내한다. (수수료·배당·세금 누락일 수도 있어 앱이 판단할 수 없다.)
+export function cashGap(state) {
+  const entries = cashLog(state);
+  if (!entries.length) return null;
+  const last = entries[entries.length - 1];
+  // 그 날짜까지의 장부를 다시 세되, 마지막 입력 자체는 빼고 본다
+  const upto = { ...state, settings: { ...state.settings, cashLog: entries.slice(0, -1) } };
+  const { pool } = capitalLedger(upto, last.date);
+  const gap = {};
+  let any = false;
+  for (const cur of ['KRW', 'USD']) {
+    const d = (last[cur] || 0) - pool[cur];
+    gap[cur] = d;
+    if (Math.abs(d) > (cur === 'KRW' ? 1000 : 1)) any = true;
+  }
+  return any ? { date: last.date, ...gap } : null;
 }
 
 // 환전 한 건의 계산 결과 (화면 표시·미리보기 공용)
