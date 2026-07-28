@@ -89,6 +89,27 @@ function syncNames() {
 
 init();
 
+// 서비스워커는 셸을 '캐시 우선'으로 주므로, 새 버전을 심어 두지 않으면 기기가 옛 코드에
+// 그대로 갇힌다. 실제로 '가상' 기능이 PC에서만 보이고 폰에서는 안 보이는 일이 있었다
+// — 폰이 옛 캐시를 쓰고 있어서, 새로고침해도 같은 옛 파일이 나왔기 때문.
+//
+// 그래서 두 가지를 한다.
+//  1) 열 때마다(그리고 30분마다) 새 버전이 있는지 확인한다.
+//  2) 새 버전이 제어를 넘겨받으면 그 즉시 다시 읽어 새 코드로 갈아탄다.
+//     (안 그러면 이미 떠 있는 화면은 옛 코드를 계속 쓰고, 사용자가 한 번 더 새로고침해야 한다.)
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;   // 첫 설치 때는 새로고침하지 않는다
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    reg.update().catch(() => {});
+    setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  }).catch(() => {});
 }

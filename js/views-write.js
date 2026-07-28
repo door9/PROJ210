@@ -393,6 +393,11 @@ function vSettings() {
         <button class="btn small" data-x="export">JSON 파일로 내보내기</button>
         <label class="btn small">JSON 가져오기<input type="file" accept=".json" data-x="import" style="display:none;"></label>
       </div>
+      <p class="small muted" style="margin:10px 0 0;">
+        이 기기의 앱 버전: <b data-appver>확인 중…</b>
+        <button class="btn small" data-x="forceupdate" style="margin-left:6px;">최신으로 갱신</button><br>
+        <span class="muted">기기마다 버전이 다르면 한쪽이 옛 코드에 갇힌 것입니다 — 새 기능이 한쪽에서만 안 보이는 원인.</span>
+      </p>
     </div>
     <div class="card">
       <h3>시세 저장소 (비공개 GitHub)</h3>
@@ -487,6 +492,32 @@ function vSettings() {
     </div>`;
 }
 vSettings.bind_ = (root) => {
+  // 지금 이 기기가 쓰고 있는 앱 버전 = 서비스워커가 들고 있는 캐시 이름.
+  // 기기마다 값이 다르면 한쪽이 옛 코드에 갇힌 것 — '가상' 같은 새 기능이 한쪽에서만
+  // 안 보이는 문제를 눈으로 확인할 수 있게 띄운다.
+  const verEl = root.querySelector('[data-appver]');
+  if (verEl) {
+    if (!('caches' in window)) verEl.textContent = '알 수 없음';
+    else caches.keys()
+      .then(ks => { verEl.textContent = ks.find(k => k.startsWith('proj210-')) || '캐시 없음'; })
+      .catch(() => { verEl.textContent = '알 수 없음'; });
+  }
+
+  // 이미 옛 캐시에 갇힌 기기를 위한 탈출구. 캐시를 비우고 서비스워커를 다시 심은 뒤 새로 읽는다.
+  // (데이터는 localStorage·Dropbox에 있으므로 캐시를 지워도 기록은 사라지지 않는다.)
+  root.querySelector('[data-x=forceupdate]')?.addEventListener('click', async () => {
+    toast('최신 버전을 받는 중…');
+    try {
+      if ('serviceWorker' in navigator) {
+        for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+      }
+      if ('caches' in window) {
+        for (const k of await caches.keys()) await caches.delete(k);
+      }
+    } catch { /* 실패해도 아래 새로고침으로 대부분 해결된다 */ }
+    location.reload();
+  });
+
   // Dropbox
   root.querySelector('[data-x=dbxin]')?.addEventListener('click', () => Dbx.login());
   root.querySelector('[data-x=dbxout]')?.addEventListener('click', async () => {
