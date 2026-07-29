@@ -27,30 +27,53 @@ export function tradeKRW(t, amount) {
   return P.toKRW(amount, cur, t.date) || 0;
 }
 
-// FIFO 재생: upto 날짜까지의 보유 lot과 실현 손익
+// 매매 재생: upto 날짜까지의 보유분과 실현 손익
+//
+// 원가는 **이동평균법**으로 매긴다 — 증권사(토스)와 같은 방식이다.
+// 살 때마다 평균 단가를 다시 내고, **팔아도 평균 단가는 그대로**다.
+// 선입선출로 하면 싼 것부터 없어져 판 뒤에 평균 단가가 뛴다(VIAV가 $32.99 → $39.07로
+// 보였던 이유). 같은 주식을 몇 주 남겼느냐에 따라 '내 매입가'가 달라지는 건 사용자가
+// 계좌에서 보는 숫자와 어긋난다.
+//
+// 다만 lot(언제 산 것인가)은 선입선출로 계속 추적한다. 평가액을 '매수일 대비 수정종가
+// 성장배수'로 내기 때문에 날짜가 필요하고(배당·액면분할 반영), 매수 다리의 환율 환산도
+// 그 날짜로 하기 때문이다. 원가만 이동평균으로 바꾸고, 날짜 정보는 그대로 쓴다.
 export function replay(trades, upto = null) {
-  const open = [];       // {t, qtyLeft}
-  const realized = [];   // {sell, parts, costSum, proceeds, pnl, ret, holdDays}
+  const open = [];       // {t, qtyLeft} — 날짜·환율용 (원가는 아래 avg가 정한다)
+  const realized = [];   // {sell, parts, costSum, costFifo, proceeds, pnl, ret, holdDays}
+  const avg = new Map(); // 심볼 -> {qty, cost} 이동평균 상태 (cost = 평균단가 × 수량)
+
   for (const t of trades) {
     if (upto && t.date > upto) break;
+    const a = avg.get(t.symbol) || { qty: 0, cost: 0 };
     if (t.side === 'buy') {
       open.push({ t, qtyLeft: t.qty });
+      a.qty += t.qty;
+      a.cost += t.price * t.qty + (t.fee || 0);   // 수수료는 매입 원가에 포함
+      avg.set(t.symbol, a);
     } else {
-      let need = t.qty, costSum = 0, wDays = 0;
+      const unitAvg = a.qty > 0 ? a.cost / a.qty : 0;
+      let need = t.qty, costFifo = 0, wDays = 0;
       const parts = [];
       for (const lot of open) {
         if (lot.t.symbol !== t.symbol || lot.qtyLeft <= 0) continue;
         const take = Math.min(need, lot.qtyLeft);
         lot.qtyLeft -= take; need -= take;
-        costSum += unitCost(lot.t) * take;
+        costFifo += unitCost(lot.t) * take;
         wDays += daysBetween(lot.t.date, t.date) * take;
         parts.push({ buy: lot.t, qty: take });
         if (need <= 0) break;
       }
       const matched = t.qty - need;
+      const costSum = unitAvg * matched;          // 이동평균 원가
       const proceeds = t.price * t.qty - (t.fee || 0);
+      // 판 만큼 수량만 줄인다 — 평균 단가는 그대로(이동평균법의 핵심)
+      a.qty = Math.max(0, a.qty - t.qty);
+      a.cost = unitAvg * a.qty;
+      if (a.qty <= 0.000001) { a.qty = 0; a.cost = 0; }   // 전량 매도 → 다음 매수부터 새로
+      avg.set(t.symbol, a);
       realized.push({
-        sell: t, parts, costSum, proceeds,
+        sell: t, parts, costSum, costFifo, proceeds,
         pnl: proceeds - costSum,
         ret: costSum > 0 ? (proceeds - costSum) / costSum : null,
         holdDays: matched > 0 ? wDays / matched : null,
@@ -58,7 +81,14 @@ export function replay(trades, upto = null) {
       });
     }
   }
-  return { open: open.filter(l => l.qtyLeft > 0.000001), realized };
+  return { open: open.filter(l => l.qtyLeft > 0.000001), realized, avg };
+}
+
+// 지금 이 종목의 이동평균 매입 단가 (없으면 null)
+export function avgUnitCost(state, symbol, date = null) {
+  const { avg } = replay(sortedTrades(state), date);
+  const a = avg.get(symbol);
+  return a && a.qty > 0 ? a.cost / a.qty : null;
 }
 
 export function heldQty(state, symbol, date) {
@@ -291,7 +321,7 @@ export function cashSince(state) {
 export function portfolio(state, date = null) {
   const d = date || todayStr();
   const trades = sortedTrades(state);
-  const { open, realized } = replay(trades, d);
+  const { open, realized, avg } = replay(trades, d);
 
   const bySym = new Map();
   for (const lot of open) {
@@ -303,8 +333,25 @@ export function portfolio(state, date = null) {
     if (lot.t.date < r.firstBuy) r.firstBuy = lot.t.date;
     r.hasPrice = r.hasPrice && v.hasPrice;
   }
+
+  // 원가를 이동평균으로 바꿔 끼운다(증권사와 같은 기준). lot 합계는 '언제 산 것인가'를
+  // 아는 값이라 평가액·환율 환산의 뼈대로 그대로 쓰고, 금액만 비례로 옮긴다:
+  //   평가액 = 이동평균 원가 × (lot 평가액 ÷ lot 원가)   ← 성장배수는 그대로 보존
+  //   원가(원화) = 이동평균 원가 × (lot 원가 원화 ÷ lot 원가)  ← 매수일 환율 가중 보존
+  for (const r of bySym.values()) {
+    const a = avg.get(r.symbol);
+    if (!a || !(a.qty > 0) || !(r.cost > 0)) continue;
+    const mvCost = (a.cost / a.qty) * r.qty;     // 이동평균 단가 × 보유 수량
+    const k = mvCost / r.cost;
+    r.value *= k;
+    r.costKRW *= k;
+    r.cost = mvCost;
+    r.avgPrice = a.cost / a.qty;                 // 화면에 그대로 보여 줄 평균 단가
+  }
+
   const rows = [...bySym.values()].map(r => ({
     ...r,
+    avgPrice: r.avgPrice ?? (r.qty > 0 ? r.cost / r.qty : null),
     valueKRW: P.toKRW(r.value, r.cur, d),
     ret: r.cost > 0 ? r.value / r.cost - 1 : null,
     lastClose: P.closeOn(r.symbol, d),
@@ -685,7 +732,7 @@ export function virtualHeldQty(v, symbol, date = null) {
 
 export function virtualRows(v) {
   const trades = virtualTrades(v);
-  const { open, realized } = replay(trades);
+  const { open, realized, avg } = replay(trades);
 
   // 보유분을 종목별로 합친다 — 나눠 산 것도 결국 한 종목의 보유분이므로.
   // 매수 건마다 성장배수가 다르므로(산 날이 다르니) 평가는 lot별로 계산해 더하고,
@@ -721,13 +768,22 @@ export function virtualRows(v) {
     // 집계는 시세가 있는 것만 — 시세 없는 건을 원가로 세면 "손익 0인 자산"이 껴서 총액이 거짓이 된다.
     const priced = r.lots.filter(l => l.hasPrice);
     const qty = priced.reduce((s, l) => s + l.qty, 0);
-    const cost = priced.reduce((s, l) => s + l.cost, 0);
-    const value = priced.reduce((s, l) => s + l.value, 0);
-    const costKRW = priced.reduce((s, l) => s + l.costKRW, 0);
+    const lotCost = priced.reduce((s, l) => s + l.cost, 0);
+    let value = priced.reduce((s, l) => s + l.value, 0);
+    let costKRW = priced.reduce((s, l) => s + l.costKRW, 0);
+    // 원가는 이동평균으로 (실제 펀드와 같은 기준). lot 합계는 성장배수·환율의 뼈대로만 쓴다.
+    const a = avg.get(r.symbol);
+    const unitAvg = a && a.qty > 0 ? a.cost / a.qty : null;
+    let cost = lotCost;
+    if (unitAvg != null && lotCost > 0) {
+      cost = unitAvg * qty;
+      const k = cost / lotCost;
+      value *= k; costKRW *= k;
+    }
     return {
       ...r,
       qty, cost, value, costKRW,
-      avgPrice: qty > 0 ? cost / qty : null,     // 가중평균 매입단가(수수료 포함)
+      avgPrice: unitAvg ?? (qty > 0 ? cost / qty : null),   // 이동평균 매입단가(수수료 포함)
       valueKRW: priced.length ? (P.toKRW(value, r.cur) || 0) : null,
       ret: cost > 0 ? value / cost - 1 : null,
       buys: r.lots.length,
@@ -891,8 +947,12 @@ const lastDayOfMonth = (y, m) => new Date(y, m, 0).getDate(); // m: 1-based
 // 달러 손익을 매도일 환율로만 환산하면 '환차손익'(산 뒤 환율이 움직인 몫)이 통째로 빠져
 // 증권사 원화 실현수익과 어긋난다. 매수일 환율로 원가를 환산해야 그 몫이 들어온다.
 function realizedKRW(r) {
+  // 매수 다리는 '그때 실제 적용된 환율'로 환산해야 환차손익이 살아난다. 그 환율은 lot마다
+  // 다르므로 선입선출 lot으로 환산한 뒤, 원가 기준의 차이(이동평균 ÷ 선입선출)만큼 비례
+  // 조정한다. 원가 방식은 이동평균이지만 '어느 날 산 돈인가'는 lot이 알고 있기 때문이다.
   let costKRW = 0;
   for (const p of r.parts) costKRW += tradeKRW(p.buy, unitCost(p.buy) * p.qty);
+  if (r.costFifo > 0) costKRW *= r.costSum / r.costFifo;
   return tradeKRW(r.sell, r.proceeds) - costKRW;
 }
 

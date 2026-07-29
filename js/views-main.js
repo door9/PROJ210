@@ -3,7 +3,7 @@ import { state, saveNow, toast, openModal, closeModal, confirmModal, registerVie
 import * as Store from './store.js';
 import * as P from './prices.js';
 import * as E from './engine.js';
-import { uid, todayStr, esc, fmtMoney, fmtSigned, fmtPct, fmtQty, fmtFx, pctClass, quarterOf, bindKrArrowStep } from './util.js';
+import { uid, todayStr, esc, fmtMoney, fmtSigned, fmtPct, fmtQty, fmtFx, pctClass, quarterOf, bindKrArrowStep, bindThousands, numOf, setNum } from './util.js';
 import * as Dbx from './dropbox.js';
 import * as Lock from './lock.js';
 import { sparkline, lineChart, bindCharts } from './chart.js';
@@ -268,7 +268,7 @@ function openCashMoveForm() {
           </select>
         </label>
         <label class="fld">금액
-          <input name="amount" type="number" step="any" min="0" required>
+          <input name="amount" type="text" inputmode="decimal" autocomplete="off" required>
         </label>
         <label class="fld full">메모 (선택)
           <input name="note" maxlength="60" placeholder="예: 생활비로 인출">
@@ -282,10 +282,11 @@ function openCashMoveForm() {
       </div>
     </form>`);
   m.querySelector('[data-x=cancel]').addEventListener('click', closeModal);
+  bindThousands(m.querySelector('#mv-form').amount);
   m.querySelector('#mv-form').addEventListener('submit', e => {
     e.preventDefault();
     const f = e.target;
-    const amount = parseFloat(f.amount.value);
+    const amount = numOf(f.amount);
     if (!(amount > 0)) { toast('금액을 입력하세요'); return; }
     state.cashMoves = [...(state.cashMoves || []), {
       id: uid(), date: f.date.value, kind: f.kind.value, cur: f.cur.value,
@@ -316,13 +317,13 @@ function openExchangeForm() {
           </select>
         </label>
         <label class="fld">보낸 금액 <span class="muted small" data-fxcur>(원)</span>
-          <input name="amount" type="number" step="any" min="0" required>
+          <input name="amount" type="text" inputmode="decimal" autocomplete="off" required>
         </label>
         <label class="fld">적용 환율 (원/달러)
-          <input name="rate" type="number" step="any" min="0" required placeholder="예: 1385.5">
+          <input name="rate" type="text" inputmode="decimal" autocomplete="off" required placeholder="예: 1,385.5">
         </label>
         <label class="fld">환전 수수료 <span class="muted small" data-fxcur2>(원)</span>
-          <input name="fee" type="number" step="any" min="0" placeholder="0">
+          <input name="fee" type="text" inputmode="decimal" autocomplete="off" placeholder="0">
         </label>
         <label class="fld full">메모 (선택)
           <input name="note" maxlength="60" placeholder="예: 통합증거금 자동환전">
@@ -340,12 +341,13 @@ function openExchangeForm() {
   const got = m.querySelector('[data-fxgot]');
 
   const preview = () => {
-    const c = E.exchangeCalc({ from: f.from.value, amount: f.amount.value, rate: f.rate.value, fee: f.fee.value });
+    const c = E.exchangeCalc({ from: f.from.value, amount: numOf(f.amount), rate: numOf(f.rate), fee: numOf(f.fee) });
     const unit = c.from === 'KRW' ? '(원)' : '($)';
     m.querySelector('[data-fxcur]').textContent = unit;
     m.querySelector('[data-fxcur2]').textContent = unit;
     got.textContent = c.got != null && c.sent > 0 ? fmtMoney(c.got, c.to) : '–';
   };
+  [f.amount, f.rate, f.fee].forEach(el => bindThousands(el));
   ['from', 'amount', 'rate', 'fee'].forEach(n => f[n].addEventListener('input', preview));
   f.from.addEventListener('change', preview);
   // 그날 시장 환율을 미리 채워 둔다 — 실제 적용 환율은 여기서 스프레드만큼 벌어진다
@@ -359,7 +361,7 @@ function openExchangeForm() {
 
   f.addEventListener('submit', e => {
     e.preventDefault();
-    const c = E.exchangeCalc({ from: f.from.value, amount: f.amount.value, rate: f.rate.value, fee: f.fee.value });
+    const c = E.exchangeCalc({ from: f.from.value, amount: numOf(f.amount), rate: numOf(f.rate), fee: numOf(f.fee) });
     if (!(c.sent > 0)) { toast('보낸 금액을 입력하세요'); return; }
     if (!(c.rate > 0)) { toast('적용 환율을 입력하세요'); return; }
     if (c.fee >= c.sent) { toast('수수료가 보낸 금액보다 큽니다'); return; }
@@ -503,7 +505,7 @@ function vSymbol(symbol) {
     <div class="tbl-wrap"><table class="tbl">
       ${pos ? `
         ${stat('보유 수량', fmtQty(pos.qty) + '주')}
-        ${stat('평균 단가', fmtMoney(pos.cost / pos.qty, cur))}
+        ${stat('평균 단가', fmtMoney(pos.avgPrice ?? (pos.cost / pos.qty), cur))}
         ${stat('평가액', fmtMoney(pos.value, cur))}
         ${stat('평가손익', `${fmtMoney(pos.value - pos.cost, cur)} (${fmtPct(pos.ret)})`, pctClass(pos.ret))}
       ` : stat('보유', '없음 (전량 매도)')}
@@ -641,13 +643,13 @@ export function openTradeForm(side, existing = null) {
           <input type="date" name="date" max="${today}" value="${t.date || today}" required>
         </label>
         <label class="fld">가격 (1주) <span id="cur-hint" class="muted"></span>
-          <input type="number" name="price" step="any" min="0" inputmode="decimal" value="${t.price ?? ''}" required>
+          <input type="text" name="price" inputmode="decimal" autocomplete="off" value="${t.price ?? ''}" required>
         </label>
         <label class="fld">수량
-          <input type="number" name="qty" step="any" min="0" inputmode="decimal" value="${t.qty ?? ''}" required>
+          <input type="text" name="qty" inputmode="decimal" autocomplete="off" value="${t.qty ?? ''}" required>
         </label>
         <label class="fld">수수료·세금 (선택)
-          <input type="number" name="fee" step="any" min="0" inputmode="decimal" value="${t.fee || ''}">
+          <input type="text" name="fee" inputmode="decimal" autocomplete="off" value="${t.fee || ''}">
         </label>
 
         ${isBuy ? `
@@ -696,7 +698,7 @@ export function openTradeForm(side, existing = null) {
       // 날짜의 종가 자동 제안 (가격 비어 있을 때)
       if (!form.price.value) {
         const c = P.closeOn(sym, form.date.value || today);
-        if (c) form.price.value = c;
+        if (c) setNum(form.price, c);
       }
     } else {
       if (nameHint) nameHint.textContent = '';
@@ -704,6 +706,8 @@ export function openTradeForm(side, existing = null) {
     }
   }
   form.symbol.addEventListener('change', updateSymbolInfo);
+  // 세 자리마다 콤마 — 큰 숫자를 눈으로 확인하며 넣을 수 있게. 값은 numOf로 읽는다.
+  [form.price, form.qty, form.fee].forEach(el => el && bindThousands(el));
   // 가격칸 방향키 — 한국 종목이면 호가 단위로, 그 외(달러 등)는 기본(±1) 동작.
   bindKrArrowStep(form.price, () => {
     const raw = form.symbol.value;
@@ -735,8 +739,8 @@ export function openTradeForm(side, existing = null) {
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const symbol = isBuy ? P.resolveSymbol(form.symbol.value) : form.symbol.value;
-    const price = parseFloat(form.price.value);
-    const qty = parseFloat(form.qty.value);
+    const price = numOf(form.price);   // 콤마를 뺀 실제 숫자 (form.price.value 직접 쓰면 안 된다)
+    const qty = numOf(form.qty);
     if (!symbol || !(price > 0) || !(qty > 0)) { toast('종목·가격·수량을 확인하세요'); return; }
     const draft = {
       id: t.id || uid(),
@@ -744,7 +748,7 @@ export function openTradeForm(side, existing = null) {
       name: P.info(symbol)?.name || t.name || symbol, // 종목명 자동
       date: form.date.value,
       price, qty,
-      fee: parseFloat(form.fee.value) || 0,
+      fee: numOf(form.fee) || 0,
       reason: form.reason.value.trim(),
       emotions: [...m.querySelectorAll('#emo-chips .chip.on')].map(c => c.dataset.emo),
       createdAt: t.createdAt || Date.now(),

@@ -125,15 +125,58 @@ export function krStepPrice(price, dir) {
 }
 
 // 가격 입력칸의 방향키 위/아래를 한국 종목 호가 단위로 스텝하게 만든다.
-// 직접 타이핑은 그대로 1원 단위 자유 입력(step="any" 유지) — 이 바인딩은 키보드
+// 직접 타이핑은 그대로 1원 단위 자유 입력 — 이 바인딩은 키보드
 // ArrowUp/ArrowDown 만 가로챈다. getCurrency() 가 'KRW' 가 아니면 브라우저 기본 동작(±1) 유지.
 export function bindKrArrowStep(input, getCurrency) {
   input.addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     if (getCurrency() !== 'KRW') return;
     e.preventDefault();
-    const next = krStepPrice(parseFloat(input.value) || 0, e.key === 'ArrowUp' ? 1 : -1);
-    input.value = String(next);
+    const next = krStepPrice(numOf(input) || 0, e.key === 'ArrowUp' ? 1 : -1);
+    setNum(input, next);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
+}
+
+// ---- 숫자 입력칸: 세 자리마다 콤마 -----------------------------------------------
+// <input type="number">는 콤마를 못 넣는다(브라우저가 값을 거부한다). 그래서 콤마를 보여
+// 주려면 type="text" + inputmode 로 두고 우리가 직접 서식을 입힌다. 대신 값을 읽을 땐
+// 반드시 numOf()를 써야 한다 — form.price.value 를 그대로 parseFloat 하면 "1,234"가 1이 된다.
+export function fmtInput(s) {
+  const t = String(s ?? '').replace(/[^\d.-]/g, '');
+  if (t === '' || t === '-' || t === '.') return t;
+  const neg = t.startsWith('-');
+  const [i, ...rest] = t.replace(/-/g, '').split('.');
+  const head = (i || '').replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const dec = rest.length ? '.' + rest.join('').slice(0, 8) : '';
+  return (neg ? '-' : '') + (head || '0') + dec;
+}
+
+// 입력칸의 실제 숫자 (콤마 제거). 비었으면 NaN
+export function numOf(input) {
+  const raw = String(input?.value ?? '').replace(/,/g, '').trim();
+  return raw === '' ? NaN : parseFloat(raw);
+}
+
+export function setNum(input, v) {
+  input.value = fmtInput(String(v));
+}
+
+// 입력하는 동안 콤마를 유지한다. 커서는 '오른쪽에 남은 숫자 개수'로 되돌려
+// 콤마가 끼어들어도 제자리에 있게 한다.
+export function bindThousands(input) {
+  const apply = () => {
+    const before = input.value;
+    const caret = input.selectionStart ?? before.length;
+    const digitsRight = before.slice(caret).replace(/[^\d.]/g, '').length;
+    const after = fmtInput(before);
+    if (after === before) return;
+    input.value = after;
+    let pos = after.length, seen = 0;
+    while (pos > 0 && seen < digitsRight) { pos--; if (/[\d.]/.test(after[pos])) seen++; }
+    try { input.setSelectionRange(pos, pos); } catch { /* type이 지원 안 하면 무시 */ }
+  };
+  input.addEventListener('input', apply);
+  input.addEventListener('blur', apply);
+  apply();
 }
