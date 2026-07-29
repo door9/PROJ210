@@ -693,8 +693,13 @@ export function openTradeForm(side, existing = null) {
     const info = P.info(sym);
     if (info) {
       if (nameHint) nameHint.textContent = `— ${info.name}`; // 종목명 자동
+      // 라벨이 길면 두 줄로 접혀 옆 칸(날짜)과 높이가 어긋난다. 통화는 금액 기호(₩·$)로
+      // 이미 드러나고 시각까지는 필요 없으므로, 종가가 있으면 '종가 + 날짜'만 붙인다.
+      // 종가가 아직 없을 때만 통화를 알려 준다 — 원을 넣을지 달러를 넣을지는 알아야 하므로.
       const l = P.last(sym);
-      curHint.textContent = `· ${info.currency}${l ? ` · 최근 종가 ${fmtMoney(l.close, info.currency)} (${P.lastStamp(sym)})` : ''}`;
+      curHint.textContent = l
+        ? ` · 최근 종가 ${fmtMoney(l.close, info.currency)} (${l.date})`
+        : ` · ${info.currency}`;
       // 날짜의 종가 자동 제안 (가격 비어 있을 때)
       if (!form.price.value) {
         const c = P.closeOn(sym, form.date.value || today);
