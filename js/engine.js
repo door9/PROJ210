@@ -98,11 +98,30 @@ export function heldQty(state, symbol, date) {
 
 // lot의 특정일 평가액(자기 통화). 시세 없으면 원가 유지.
 function lotValue(lot, date) {
+  const sym = lot.t.symbol;
+  const d = date || todayStr();               // closeOn은 null 날짜를 모른다 — 반드시 채워서 넘긴다
   const cost = unitCost(lot.t) * lot.qtyLeft;
-  const g = P.growth(lot.t.symbol, lot.t.date, date);
+  const now = P.closeOn(sym, d);              // 평가 시점 종가
+  const then = P.closeOn(sym, lot.t.date);    // 매수일 종가
+  const g = P.growth(sym, lot.t.date, d);     // 배당·분할 반영 성장배수
+
+  // 기본은 **보유 수량 × 현재가** — 증권사가 보여 주는 값이고, 체결가가 그날 종가와 다른
+  // 보통의 경우에 정확하다. 원가 × 성장배수로 계산하면 그 차이만큼 어긋난다
+  // (VIAV를 $39.74에 샀는데 그날 종가는 $40.70이라 평가액이 1% 낮게 나왔다).
+  let value = now != null ? lot.qtyLeft * now : cost;
+  let hasPrice = now != null;
+
+  // 다만 액면분할이 있었으면 기록된 수량이 옛 기준이라 그대로 곱하면 틀린다. 야후는 과거
+  // 종가를 분할 기준으로 소급 조정하므로, 내 체결가가 그날 종가와 '배수'만큼 벌어져 있으면
+  // 분할로 보고 성장배수 방식으로 되돌린다 — 그쪽은 수량 변화를 자동으로 흡수한다.
+  // (체결가와 종가의 평범한 차이는 몇 %라 1.5배 문턱에 걸리지 않는다.)
+  if (g != null && then > 0 && lot.t.price > 0) {
+    const ratio = lot.t.price / then;
+    if (ratio > 1.5 || ratio < 1 / 1.5) { value = cost * g; hasPrice = true; }
+  }
+
   // 매입액의 원화 환산은 '살 때 실제 적용된 환율'로 (평가액은 그 시점 시장 환율).
-  return { cur: P.currencyOf(lot.t.symbol), cost, costKRW: tradeKRW(lot.t, cost),
-           value: g ? cost * g : cost, hasPrice: !!g };
+  return { cur: P.currencyOf(sym), cost, costKRW: tradeKRW(lot.t, cost), value, hasPrice };
 }
 
 // ---- 자금 원장: 밖에서 새로 들여온(내간) 돈만 골라낸다 --------------------------
@@ -334,17 +353,18 @@ export function portfolio(state, date = null) {
     r.hasPrice = r.hasPrice && v.hasPrice;
   }
 
-  // 원가를 이동평균으로 바꿔 끼운다(증권사와 같은 기준). lot 합계는 '언제 산 것인가'를
-  // 아는 값이라 평가액·환율 환산의 뼈대로 그대로 쓰고, 금액만 비례로 옮긴다:
-  //   평가액 = 이동평균 원가 × (lot 평가액 ÷ lot 원가)   ← 성장배수는 그대로 보존
-  //   원가(원화) = 이동평균 원가 × (lot 원가 원화 ÷ lot 원가)  ← 매수일 환율 가중 보존
+  // 원가만 이동평균으로 바꿔 끼운다(증권사와 같은 기준).
+  //
+  // **평가액은 건드리지 않는다.** 평가액은 지금 시장에서 매겨지는 값이라 원가를 어떻게
+  // 매기든 달라지지 않는다 (lot 원가 × 성장배수 ≈ 보유 수량 × 현재가). 여기에 원가 비율을
+  // 곱했다가 VIAV 수익률이 실제로는 플러스인데 -3.39%로 나온 적이 있다.
+  //
+  // 원화 원가만 같은 비율로 옮긴다 — 그래야 '매수일 환율 가중'을 유지한 채 금액이 맞는다.
   for (const r of bySym.values()) {
     const a = avg.get(r.symbol);
     if (!a || !(a.qty > 0) || !(r.cost > 0)) continue;
     const mvCost = (a.cost / a.qty) * r.qty;     // 이동평균 단가 × 보유 수량
-    const k = mvCost / r.cost;
-    r.value *= k;
-    r.costKRW *= k;
+    r.costKRW *= mvCost / r.cost;
     r.cost = mvCost;
     r.avgPrice = a.cost / a.qty;                 // 화면에 그대로 보여 줄 평균 단가
   }
@@ -769,16 +789,15 @@ export function virtualRows(v) {
     const priced = r.lots.filter(l => l.hasPrice);
     const qty = priced.reduce((s, l) => s + l.qty, 0);
     const lotCost = priced.reduce((s, l) => s + l.cost, 0);
-    let value = priced.reduce((s, l) => s + l.value, 0);
+    const value = priced.reduce((s, l) => s + l.value, 0);   // 시장 가치 — 원가 기준과 무관
     let costKRW = priced.reduce((s, l) => s + l.costKRW, 0);
-    // 원가는 이동평균으로 (실제 펀드와 같은 기준). lot 합계는 성장배수·환율의 뼈대로만 쓴다.
+    // 원가만 이동평균으로 (실제 펀드와 같은 기준). 평가액은 건드리지 않는다 — 위 portfolio 주석 참고.
     const a = avg.get(r.symbol);
     const unitAvg = a && a.qty > 0 ? a.cost / a.qty : null;
     let cost = lotCost;
     if (unitAvg != null && lotCost > 0) {
       cost = unitAvg * qty;
-      const k = cost / lotCost;
-      value *= k; costKRW *= k;
+      costKRW *= cost / lotCost;
     }
     return {
       ...r,
