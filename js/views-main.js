@@ -415,10 +415,18 @@ function vTrades() {
   return `
     <div class="view-title">매매 기록</div>
     <p class="view-desc">결과가 아니라 판단을 남기는 곳. 팔 때는 살 때의 기록과 대조합니다.</p>
-    <div class="btn-row" style="margin:0 0 12px;">
+    <div class="btn-row" style="margin:0 0 12px; flex-wrap:wrap;">
       <button class="btn primary" data-act="buy">매수 기록</button>
       <button class="btn" data-act="sell">매도 기록</button>
+      <button class="btn" data-act="mv2">입출금</button>
+      <button class="btn" data-act="fx2">환전</button>
     </div>
+    ${gap ? `<div class="notice" style="margin:0 0 12px;">
+      <b>${gap.date} 입력하신 현금 잔액이 앱 장부와 다릅니다.</b>
+      ${Math.abs(gap.KRW) > 1000 ? `원화 <b class="${pctClass(gap.KRW)}">${fmtSigned(gap.KRW)}</b> ` : ''}
+      ${Math.abs(gap.USD) > 1 ? `달러 <b class="${pctClass(gap.USD)}">${fmtMoney(gap.USD, 'USD')}</b>` : ''}
+      <br><span class="small">인출·입금하신 것이라면 위 <b>입출금</b>에 기록해 주세요.</span>
+    </div>` : ''}
     <div class="card">
       ${items || '<div class="empty">아직 기록이 없습니다</div>'}
     </div>
@@ -428,12 +436,6 @@ function vTrades() {
         펀드 밖으로 뺀 돈과 새로 넣은 돈입니다. <b>앱은 잔액 차이를 보고 인출을 넘겨짚지 않습니다</b> —
         여기에 남긴 기록만 투입 원금에 반영됩니다.
       </p>
-      ${gap ? `<div class="notice" style="margin:8px 0 0;">
-        <b>${gap.date} 입력하신 잔액이 앱 장부와 다릅니다.</b><br>
-        ${Math.abs(gap.KRW) > 1000 ? `원화 <b class="${pctClass(gap.KRW)}">${fmtSigned(gap.KRW)}</b> ` : ''}
-        ${Math.abs(gap.USD) > 1 ? `달러 <b class="${pctClass(gap.USD)}">${fmtMoney(gap.USD, 'USD')}</b>` : ''}
-        <br><span class="small">인출·입금하신 것이라면 아래에 기록해 주세요. 기록하지 않은 수수료·세금·배당 때문일 수도 있어 앱이 대신 판단하지 않습니다.</span>
-      </div>` : ''}
       <div class="btn-row" style="margin:8px 0 0;"><button class="btn small primary" data-act="mv">입출금 기록</button></div>
       ${mvItems ? `<ul class="list-plain">${mvItems}</ul>` : '<div class="empty">아직 입출금 기록이 없습니다</div>'}
     </div>
@@ -450,7 +452,9 @@ function vTrades() {
 vTrades.bind_ = (root) => {
   root.querySelector('[data-act=buy]').addEventListener('click', () => openTradeForm('buy'));
   root.querySelector('[data-act=sell]').addEventListener('click', () => openTradeForm('sell'));
-  root.querySelector('[data-act=mv]').addEventListener('click', () => openCashMoveForm());
+  // 매매 기록이 수백 건이면 아래 카드는 한참 스크롤해야 보인다 — 상단에도 같은 버튼을 둔다.
+  root.querySelectorAll('[data-act=mv], [data-act=mv2]').forEach(b => b.addEventListener('click', () => openCashMoveForm()));
+  root.querySelectorAll('[data-act=fx2]').forEach(b => b.addEventListener('click', () => openExchangeForm()));
   root.querySelectorAll('[data-delmv]').forEach(b => b.addEventListener('click', async () => {
     const mv = (state.cashMoves || []).find(x => x.id === b.dataset.delmv);
     if (!mv) return;
