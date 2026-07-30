@@ -848,8 +848,48 @@ export function virtualFunds(state) {
 }
 
 // ---- 투자 비용: 대출 이자 (계좌별 독립) ----------------------------------------
-// loans: 대출 계좌 목록 [{name, balance, rate(연%), startDate, endDate(null=보유중), note}].
-// 각 계좌는 startDate부터 endDate(없으면 오늘)까지 병렬로 이자가 쌓인다(잔액×연율×일수/365).
+// loans: 대출 계좌 목록
+//   {name, balance(최초 금액), rate(연%), startDate, endDate(null=보유중), note,
+//    repayments:[{id, date, amount, note}]}   ← 중도 상환 기록
+//
+// 이자는 잔액×연율×일수/365. 중도 상환이 있으면 그 날짜로 구간을 끊어, 갚은 뒤로는 줄어든
+// 잔액에만 이자가 붙는다. 이게 없으면 일부를 갚아도 최초 금액에 계속 이자가 붙어 비용이
+// 과대 계상된다(예전에는 계좌를 지우고 새로 만드는 수밖에 없어 이력이 끊겼다).
+function loanSchedule(l, today) {
+  const startBal = Math.max(0, Number(l.balance) || 0);
+  const rate = (Number(l.rate) || 0) / 100;
+  // 상환 완료일이 적혀 있으면 그날까지만 이자를 센다
+  const endCap = (l.endDate && l.endDate < today) ? l.endDate : today;
+  const reps = [...(l.repayments || [])]
+    .filter(r => r.date >= l.startDate)
+    .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+
+  let bal = startBal, cursor = l.startDate, interest = 0, paidOffDate = null;
+  const segs = [];
+  const addSeg = (to) => {
+    const days = Math.max(0, daysBetween(cursor, to));
+    if (days > 0 || segs.length === 0) {
+      interest += bal * rate * days / 365;
+      segs.push({ from: cursor, to, balance: bal, days });
+    }
+    cursor = to;
+  };
+  for (const r of reps) {
+    const at = r.date > endCap ? endCap : r.date;
+    addSeg(at);
+    bal = Math.max(0, bal - (Number(r.amount) || 0));
+    if (bal <= 0.5 && !paidOffDate) paidOffDate = at;
+    if (at >= endCap) break;
+  }
+  if (cursor < endCap) addSeg(endCap);
+
+  return {
+    interest, balanceNow: bal, segs, paidOffDate,
+    repaid: reps.reduce((s, r) => s + (Number(r.amount) || 0), 0),
+    days: Math.max(0, daysBetween(l.startDate, paidOffDate || endCap)),
+  };
+}
+
 // asOf: 그 시점 기준으로 계산 (청산 요약이 청산일 기준 이자를 얼릴 때 쓴다). 없으면 오늘.
 export function loanStatus(state, asOf = null) {
   const loans = state.loans || [];
@@ -857,14 +897,22 @@ export function loanStatus(state, asOf = null) {
   const today = asOf || todayStr();
 
   const accounts = loans.map(l => {
-    const open = !l.endDate || l.endDate > today;   // 기준일에 아직 안 갚았으면 보유 중
-    const end = (l.endDate && l.endDate < today) ? l.endDate : today;
-    const days = Math.max(0, daysBetween(l.startDate, end));
+    const sch = loanSchedule(l, today);
+    // 다 갚았으면(잔액 0) 상환 완료일을 따로 안 적었어도 끝난 것으로 본다
+    const closedByDate = !!l.endDate && l.endDate <= today;
+    const open = !closedByDate && sch.balanceNow > 0.5;
+    const end = closedByDate ? l.endDate : (sch.paidOffDate || today);
     return {
-      ...l, open, end, days,
-      interest: l.balance * (l.rate / 100) * days / 365,
-      monthly: open ? l.balance * (l.rate / 100) / 12 : 0,
-      daily: open ? l.balance * (l.rate / 100) / 365 : 0,
+      ...l, open, end,
+      principal: l.balance,          // 최초 대출 금액
+      balance: sch.balanceNow,       // 지금 남은 잔액 (중도 상환 반영)
+      repaid: sch.repaid,
+      repayCount: (l.repayments || []).length,
+      days: sch.days,
+      segments: sch.segs,
+      interest: sch.interest,
+      monthly: open ? sch.balanceNow * (l.rate / 100) / 12 : 0,
+      daily: open ? sch.balanceNow * (l.rate / 100) / 365 : 0,
     };
   }).sort((a, b) => a.startDate < b.startDate ? -1 : 1);
 

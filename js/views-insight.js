@@ -3,7 +3,7 @@ import { state, saveNow, toast, registerView, render, confirmModal, openModal, c
 import * as Store from './store.js';
 import * as P from './prices.js';
 import * as E from './engine.js';
-import { uid, todayStr, esc, fmtMoney, fmtPct, fmtQty, pctClass } from './util.js';
+import { uid, todayStr, esc, fmtMoney, fmtPct, fmtQty, pctClass, bindThousands, numOf } from './util.js';
 import { lineChart, moneyShort, bindCharts } from './chart.js';
 
 const C = {
@@ -511,13 +511,14 @@ function openLoanModal(existing) {
     <form id="loan-form">
       <div class="form-grid">
         <label class="fld full">계좌 이름 / 종류<input name="name" placeholder="예: 마이너스통장, ○○은행 신용대출" value="${esc(l.name || l.kind || '')}" required></label>
-        <label class="fld">현재 잔액 (원)<input type="number" name="balance" min="0" step="any" inputmode="numeric" value="${l.balance ?? ''}" required></label>
+        <label class="fld">최초 대출 금액 (원)<input type="number" name="balance" min="0" step="any" inputmode="numeric" value="${l.balance ?? ''}" required></label>
         <label class="fld">연 이자율 (%)<input type="number" name="rate" min="0" step="any" inputmode="decimal" value="${l.rate ?? ''}" required></label>
         <label class="fld">대출 시작일<input type="date" name="startDate" max="${todayStr()}" value="${l.startDate || l.date || todayStr()}" required></label>
         <label class="fld">상환 완료일 (선택)<input type="date" name="endDate" max="${todayStr()}" value="${l.endDate || ''}"></label>
         <label class="fld full">메모 (선택)<input name="note" value="${esc(l.note || '')}"></label>
       </div>
-      <p class="hint" style="margin:2px 0 0;">상환 완료일을 비워두면 "보유 중"으로 보고 오늘까지 이자를 계산합니다. 다 갚았다면 그 날짜를 넣으면 그날로 이자가 멈춥니다.</p>
+      <p class="hint" style="margin:2px 0 0;">상환 완료일을 비워두면 "보유 중"으로 보고 오늘까지 이자를 계산합니다. 다 갚았다면 그 날짜를 넣으면 그날로 이자가 멈춥니다.
+      <b>일부만 갚았다면</b> 여기 말고 목록의 <b>상환</b> 버튼에 그 날짜와 금액을 넣으세요 — 그날부터 줄어든 잔액으로 이자를 계산합니다.</p>
       <div class="btn-row" style="justify-content:flex-end;">
         <button type="button" class="btn" data-x="cancel">취소</button>
         <button type="submit" class="btn primary">저장</button>
@@ -545,6 +546,70 @@ function openLoanModal(existing) {
   });
 }
 
+// ---------- 중도 상환 기록 ----------
+// 대출을 일부만 갚은 경우. 그 날짜로 구간이 끊겨 이후로는 줄어든 잔액에만 이자가 붙는다.
+// 대출 객체 안에 넣으므로(repayments) 저장할 때 대출의 updatedAt을 올려야 동기화된다.
+function openRepayModal(loanId) {
+  const find = () => (state.loans || []).find(x => x.id === loanId) || null;
+  const l = find();
+  if (!l) return;
+  const acct = E.loanStatus(state)?.accounts.find(a => a.id === loanId);
+  const reps = [...(l.repayments || [])].sort((a, b) => a.date < b.date ? 1 : -1);
+
+  const m = openModal(`
+    <h2>상환 기록 — ${esc(l.name)}</h2>
+    <p class="small muted" style="margin-top:-6px;">
+      최초 ${fmtMoney(l.balance)} · 누적 상환 <b>${fmtMoney(acct?.repaid || 0)}</b> · 남은 잔액 <b>${fmtMoney(acct?.balance ?? l.balance)}</b>
+    </p>
+    <form id="rep-form">
+      <div class="form-grid">
+        <label class="fld">갚은 날<input type="date" name="date" max="${todayStr()}" min="${l.startDate}" value="${todayStr()}" required></label>
+        <label class="fld">갚은 금액 (원)<input name="amount" type="text" inputmode="decimal" autocomplete="off" required></label>
+        <label class="fld full">메모 (선택)<input name="note" maxlength="60" placeholder="예: 보너스로 일부 상환"></label>
+      </div>
+      <p class="hint" style="margin:2px 0 0;">전액을 갚았다면 남은 잔액과 같은 금액을 넣으세요 — 잔액이 0이 되면 그날로 이자가 멈춥니다.</p>
+      <div class="btn-row" style="justify-content:flex-end;">
+        <button type="button" class="btn" data-x="cancel">닫기</button>
+        <button type="submit" class="btn primary">기록</button>
+      </div>
+    </form>
+    ${reps.length ? `<div class="tbl-wrap" style="margin-top:12px;"><table class="tbl">
+      <tr><th>갚은 날</th><th class="num">금액</th><th class="num"></th></tr>
+      ${reps.map(r => `<tr>
+        <td>${r.date}${r.note ? `<br><span class="muted small">${esc(r.note)}</span>` : ''}</td>
+        <td class="num">${fmtMoney(r.amount)}</td>
+        <td class="num"><button class="btn small danger" data-delrep="${r.id}">삭제</button></td>
+      </tr>`).join('')}
+    </table></div>` : '<div class="empty" style="margin-top:12px;">아직 상환 기록이 없습니다</div>'}`);
+
+  m.querySelector('[data-x=cancel]').onclick = closeModal;
+  const amt = m.querySelector('[name=amount]');
+  bindThousands(amt);
+
+  m.querySelector('#rep-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const f = e.target;
+    const cur = find();                      // 동기화가 배열을 갈아끼웠을 수 있으므로 지금 다시 찾는다
+    if (!cur) { closeModal(); render(); return; }
+    const amount = numOf(amt);
+    if (!(amount > 0)) { toast('금액을 입력하세요'); return; }
+    if (f.date.value < cur.startDate) { toast('대출 시작일보다 빠릅니다'); return; }
+    cur.repayments = [...(cur.repayments || []), {
+      id: uid(), date: f.date.value, amount, note: f.note.value.trim(),
+    }];
+    cur.updatedAt = Date.now();              // repayments가 대출 안에 있으므로 필수
+    saveNow(); closeModal(); render(); toast('상환을 기록했습니다');
+  });
+
+  m.querySelectorAll('[data-delrep]').forEach(b => b.addEventListener('click', () => {
+    const cur = find();
+    if (!cur) return;
+    cur.repayments = (cur.repayments || []).filter(r => r.id !== b.dataset.delrep);
+    cur.updatedAt = Date.now();
+    saveNow(); closeModal(); render(); toast('지웠습니다');
+  }));
+}
+
 function vCost() {
   const ln = E.loanStatus(state);
   if (!ln) {
@@ -567,9 +632,11 @@ function vCost() {
         <span class="amt small" style="${a.open ? 'color:var(--warn-ink);' : ''}">${a.open ? '이번 달 ' + fmtMoney(a.monthly) : '—'}</span>
       </div>
       <div class="trade-meta">
-        <span>${a.startDate} ~ ${a.open ? '현재' : a.endDate} (${a.days}일)</span>
+        <span>${a.startDate} ~ ${a.open ? '현재' : a.end} (${a.days}일)</span>
         <span>누적 이자 ${fmtMoney(a.interest)}</span>
+        ${a.repaid > 0 ? `<span>상환 ${a.repayCount}회 · ${fmtMoney(a.repaid)} <span class="muted">(최초 ${fmtMoney(a.principal)})</span></span>` : ''}
         <span style="margin-left:auto; white-space:nowrap;">
+          <button class="btn small" data-repay="${a.id}">상환</button>
           <button class="btn small" data-edit="${a.id}">수정</button>
           <button class="btn small danger" data-del="${a.id}">삭제</button>
         </span>
@@ -626,6 +693,7 @@ function vCost() {
 }
 vCost.bind_ = (root) => {
   root.querySelector('[data-x=add]')?.addEventListener('click', () => openLoanModal(null));
+  root.querySelectorAll('[data-repay]').forEach(b => b.addEventListener('click', () => openRepayModal(b.dataset.repay)));
   root.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => {
     const l = state.loans.find(x => x.id === b.dataset.edit);
     if (l) openLoanModal(l);
