@@ -146,6 +146,14 @@ export function capitalLedger(state, upto = null) {
   // 밖에서 들어온(나간) 돈 [{date, cur, amt, amtKRW, src}] — 평행우주가 쓴다.
   // src: 'trade'=매수에 새로 든 돈 / 'cash'=현금 입력이 장부와 달라 생긴 조정.
   // 'cash'가 붙은 건은 한 번에 크게 튀어 그래프에서 이유 없는 절벽처럼 보이므로 화면에서 설명한다.
+  // 총량 흐름 — 순액(netCap)만으로는 "실제 얼마 넣고 얼마 뺐나"를 알 수 없다.
+  // 출금하면 netCap이 줄어 수익률의 분모가 작아지고, 그러면 실력과 무관하게 수익률이
+  // 부풀려진다(달러가 +108%로 나온 이유). 그래서 들어온 돈과 나간 돈을 따로 센다.
+  //   ext*  = 펀드 밖에서 오간 진짜 자본
+  //   xfer* = 통화 사이 이동(환전). 그 통화 기준으론 들어오고 나간 돈이지만,
+  //           합산 기준으론 펀드 안에서 옮긴 것이라 자본이 아니다.
+  const flow = { KRW: { extIn: 0, extOut: 0, xferIn: 0, xferOut: 0 },
+                 USD: { extIn: 0, extOut: 0, xferIn: 0, xferOut: 0 } };
   const events = [];
   const entries = cashLog(state).filter(e => !upto || e.date <= upto);
   let ei = 0;
@@ -179,12 +187,14 @@ export function capitalLedger(state, upto = null) {
     const avail = Math.max(0, pool[from]);
     const fromPool = Math.min(avail, sent);
     const ext = sent - fromPool;
-    if (ext > 1e-9) { netCap[from] += ext; push(x.date, from, ext, 'trade'); }
+    if (ext > 1e-9) { netCap[from] += ext; flow[from].extIn += ext; push(x.date, from, ext, 'trade'); }
 
     pool[from] = avail - fromPool;
     pool[to] += got;
     netCap[from] -= net;
     netCap[to] += got;
+    flow[from].xferOut += net;
+    flow[to].xferIn += got;
   };
   // 첫 현금 입력은 '자본 이동'이 아니라 '기준 맞추기'다.
   //
@@ -213,6 +223,7 @@ export function capitalLedger(state, upto = null) {
     const signed = mv.kind === 'out' ? -amt : amt;
     pool[cur] += signed;
     netCap[cur] += signed;
+    if (signed > 0) flow[cur].extIn += amt; else flow[cur].extOut += amt;
     push(mv.date, cur, signed, 'cash');
   };
 
@@ -248,10 +259,13 @@ export function capitalLedger(state, upto = null) {
           short = Math.max(0, short - gotCur);
           netCap[other] -= useOther;
           netCap[cur] += gotCur;
+          flow[other].xferOut += useOther;
+          flow[cur].xferIn += gotCur;
         }
       }
 
       netCap[cur] += short;
+      if (short > 1e-9) flow[cur].extIn += short;
       push(t.date, cur, short, 'trade');
     } else {
       pool[cur] += t.price * t.qty - (t.fee || 0);
@@ -262,7 +276,7 @@ export function capitalLedger(state, upto = null) {
   while (ei < entries.length) applyCashEntry(entries[ei++]);
 
   events.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
-  return { pool, netCap, events };
+  return { pool, netCap, events, flow };
 }
 
 // ---- 현금: 사용자가 직접 입력한 잔액 -------------------------------------------
@@ -386,7 +400,7 @@ export function portfolio(state, date = null) {
 
   // 통화별 순 투입 원금 = 밖에서 들여온 순 자본 (환산하지 않고 통화 그대로 집계).
   // 현금을 입력했으면 그 선언값으로 장부를 맞추므로, 아직 투자 안 한 입금분도 원금에 잡힌다.
-  const { netCap } = capitalLedger(state, d);
+  const { netCap, flow } = capitalLedger(state, d);
 
   // 보유 종목 평가액(통화별, 현지 통화)
   const hold = { KRW: 0, USD: 0 };
@@ -399,12 +413,26 @@ export function portfolio(state, date = null) {
   const cashTracked = !!cashEntry;
 
   const fx = P.fxOn(d);
-  // 통화별 슬리브(보유 주식 + 현금) 수익률 — 환율 개입 없이 통화 내부에서만 계산
+  // 통화별 슬리브(보유 주식 + 현금) 수익률 — 환율 개입 없이 통화 내부에서만 계산.
+  //
+  // 수익률은 **실제로 들어가고 나온 돈** 기준이다:
+  //     수익   = 지금 자산 + 그동안 뺀 돈 − 그동안 넣은 돈
+  //     수익률 = 수익 ÷ 넣은 돈
+  // 순액(넣은 돈 − 뺀 돈)을 분모로 쓰면 출금할수록 분모가 작아져 수익률이 부풀려진다
+  // (달러에서 실제로 +108%가 나왔다. 같은 상황을 이 기준으로 보면 +22%다).
   const sleeves = {};
   for (const cur of ['KRW', 'USD']) {
     const value = (hold[cur] || 0) + cash[cur];
-    const cost = netCap[cur];
-    sleeves[cur] = { cost, value, ret: cost > 0 ? value / cost - 1 : null, has: cost > 0 || value > 1e-6 };
+    const f = flow[cur];
+    const contributed = f.extIn + f.xferIn;    // 그 통화로 들어온 돈 (환전해 온 것 포함)
+    const withdrawn = f.extOut + f.xferOut;    // 그 통화에서 나간 돈
+    const profit = value + withdrawn - contributed;
+    sleeves[cur] = {
+      cost: netCap[cur],                       // 지금 잠겨 있는 순 자본 (원금 표시용)
+      contributed, withdrawn, value, profit,
+      ret: contributed > 0 ? profit / contributed : null,
+      has: contributed > 0 || value > 1e-6,
+    };
   }
 
   const cashKRW = cash.KRW + (P.toKRW(cash.USD, 'USD', d) || 0);
@@ -413,16 +441,26 @@ export function portfolio(state, date = null) {
   // (환전 시점 환율을 추적하지 않으므로 실제 환차익은 계산 불가 → 원가·평가를 같은 현재 환율로 환산)
   const costKRWnow = netCap.KRW + (P.toKRW(netCap.USD, 'USD', d) || 0);
 
+  // 합산은 **펀드 밖에서** 오간 돈만 센다. 환전(xfer)은 펀드 안에서 통화만 바꾼 것이라
+  // 합산 관점에서는 자본이 오간 게 아니다 — 넣으면 같은 돈을 두 번 세게 된다.
+  const contributedKRW = flow.KRW.extIn + (P.toKRW(flow.USD.extIn, 'USD', d) || 0);
+  const withdrawnKRW = flow.KRW.extOut + (P.toKRW(flow.USD.extOut, 'USD', d) || 0);
+  const profitKRW = totalKRW + withdrawnKRW - contributedKRW;
+
   return {
     date: d, rows, cash, cashKRW, investedKRW, totalKRW, fx, sleeves,
-    depositKRW: netCap.KRW, depositUSD: netCap.USD,
+    // 화면의 '원금'은 수익률의 분모와 같아야 한다 — 넣은 돈(총액). 순 자본은 netDeposit*.
+    depositKRW: sleeves.KRW.contributed, depositUSD: sleeves.USD.contributed,
+    netDepositKRW: netCap.KRW, netDepositUSD: netCap.USD,
     holdKRW: hold.KRW || 0, holdUSD: hold.USD || 0, cashUSD: cash.USD,
     cashTracked,                    // 그 시점에 적용 중인 현금 입력이 있는가 (없으면 현금 0으로 계산 중)
     cashSince: since,               // 처음 입력한 날 (이 날부터 현금이 평가액에 포함)
     cashAsOf: cashEntry?.date || null, // 지금 쓰이는 값을 넣은 날 (표시용 — cashSince와 다를 수 있다)
-    deposits: costKRWnow,           // 합산 원가(현재 환율) — 단일 KRW 지표 소비자용
-    profit: totalKRW - costKRWnow,  // 합산 손익(환율 영향 제외)
-    ret: costKRWnow > 0 ? (totalKRW - costKRWnow) / costKRWnow : null,
+    deposits: contributedKRW,       // 지금까지 펀드에 넣은 돈 (수익률의 분모)
+    netDeposits: costKRWnow,        // 지금 잠겨 있는 순 자본 (넣은 돈 − 뺀 돈)
+    withdrawn: withdrawnKRW,        // 지금까지 뺀 돈
+    profit: profitKRW,              // 자산 + 뺀 돈 − 넣은 돈
+    ret: contributedKRW > 0 ? profitKRW / contributedKRW : null,
     realized,
   };
 }
