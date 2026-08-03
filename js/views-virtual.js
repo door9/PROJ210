@@ -6,7 +6,7 @@
 import { state, saveNow, toast, openModal, closeModal, confirmModal, registerView, render } from './core.js';
 import * as E from './engine.js';
 import * as P from './prices.js';
-import { uid, todayStr, esc, fmtMoney, fmtSigned, fmtPct, fmtQty, pctClass, bindKrArrowStep } from './util.js';
+import { uid, todayStr, esc, fmtMoney, fmtSigned, fmtPct, fmtQty, pctClass, bindKrArrowStep, bindThousands, numOf } from './util.js';
 
 // 펼쳐 놓은 펀드 id (화면을 다시 그려도 유지). null이면 모두 접힘.
 let openFundId = null;
@@ -47,6 +47,11 @@ function openFundModal(fund = null) {
       <label class="fld">펀드 이름
         <input name="name" required maxlength="40" placeholder="예: 안 산 반도체" value="${esc(fund?.name || '')}">
       </label>
+      <label class="fld" style="margin-top:10px;">투입 원금 — 설정 금액 (선택)
+        <input name="seed" type="text" inputmode="decimal" autocomplete="off" value="${fund?.seed ?? ''}" placeholder="예: 10,500,000">
+      </label>
+      <p class="hint" style="margin:4px 0 0;">이 펀드에 굴린다고 가정할 원화 금액입니다. 넣으면 <b>결산</b>(넣은 돈 대비 지금 얼마인가)이 계산되고,
+      아직 안 산 돈은 현금으로 자동 계산됩니다. 비워 두면 매매에 실제로 든 돈을 투입 원금으로 봅니다.</p>
       <label class="fld" style="margin-top:10px;">메모 (왜 이 가정을 만드는가)
         <textarea name="note" placeholder="예: 2023년에 사려다 만 종목들. 그때 샀으면 어땠을까.">${esc(fund?.note || '')}</textarea>
       </label>
@@ -56,6 +61,7 @@ function openFundModal(fund = null) {
       </div>
     </form>`);
   m.querySelector('[data-x=cancel]').addEventListener('click', closeModal);
+  bindThousands(m.querySelector('#vf-form').seed);
   m.querySelector('#vf-form').addEventListener('submit', e => {
     e.preventDefault();
     const f = e.target;
@@ -66,10 +72,11 @@ function openFundModal(fund = null) {
       if (!cur) { closeModal(); render(); toast('그 사이 펀드가 사라졌습니다'); return; }
       cur.name = name;
       cur.note = f.note.value.trim();
+      cur.seed = numOf(f.seed) || 0;
       cur.updatedAt = Date.now();   // 동기화가 이 변경을 이기도록 — 필수
     } else {
       const nf = {
-        id: uid(), name, note: f.note.value.trim(), positions: [],
+        id: uid(), name, note: f.note.value.trim(), seed: numOf(f.seed) || 0, positions: [],
         createdAt: Date.now(), updatedAt: Date.now(),
       };
       state.virtuals = [...(state.virtuals || []), nf];
@@ -374,7 +381,9 @@ function vVirtual() {
         </div>
         <div style="margin-left:auto; text-align:right; white-space:nowrap;">
           <div style="font-size:17px; font-weight:700;">${sum.trades.length ? fmtMoney(sum.totalKRW) : '–'}</div>
-          ${sum.ret != null ? `<div class="small ${pctClass(sum.profitKRW)}">${fmtSigned(sum.profitKRW)} · ${fmtPct(sum.ret)}</div>` : ''}
+          ${sum.netRet != null
+            ? `<div class="small ${pctClass(sum.netProfitKRW)}">${fmtSigned(sum.netProfitKRW)} · ${fmtPct(sum.netRet)}</div>`
+            : (sum.ret != null ? `<div class="small ${pctClass(sum.profitKRW)}">${fmtSigned(sum.profitKRW)} · ${fmtPct(sum.ret)}</div>` : '')}
         </div>
       </div>
       <div class="btn-row" style="margin:10px 0 0; flex-wrap:wrap;">
@@ -387,12 +396,16 @@ function vVirtual() {
       </div>
       ${isOpen ? `<div style="margin-top:12px;">
         ${sum.trades.length ? `<dl class="hero-facts" style="margin:0 0 10px;">
-          <dt>매입액</dt><dd>${fmtMoney(sum.costKRW)}</dd>
-          <dt>평가액</dt><dd>${fmtMoney(sum.valueKRW)}</dd>
-          <dt>평가손익</dt><dd class="${pctClass(sum.profitKRW)}"><b>${fmtSigned(sum.profitKRW)}</b> (${fmtPct(sum.ret)})</dd>
-          ${sum.realized.length ? `<dt>실현손익</dt><dd class="${pctClass(sum.realizedKRW)}"><b>${fmtSigned(sum.realizedKRW)}</b></dd>` : ''}
-          <dt>현금</dt><dd>${fmtMoney(sum.cashKRW)}${sum.cash.USD ? ` <span class="muted small">(${fmtMoney(sum.cash.KRW)} + ${fmtMoney(sum.cash.USD, 'USD')})</span>` : ''}</dd>
+          <dt>투입 원금</dt><dd>${fmtMoney(sum.investedKRW)}
+            <span class="muted small">${sum.seed > 0 ? '설정 금액' : '매매에 든 돈(자동)'}</span></dd>
+          <dt>현금</dt><dd>${fmtMoney(sum.cashKRW)}${sum.cash.USD ? ` <span class="muted small">(${fmtMoney(sum.cash.KRW)} + ${fmtMoney(sum.cash.USD, 'USD')})</span>`
+            : (!sum.manualCash && sum.seed > 0 ? ' <span class="muted small">아직 안 산 돈(자동)</span>' : '')}</dd>
           <dt>총자산</dt><dd><b>${fmtMoney(sum.totalKRW)}</b> <span class="muted small">보유 평가액 + 현금</span></dd>
+          ${sum.netRet != null ? `<dt>결산</dt><dd class="${pctClass(sum.netProfitKRW)}">
+            <b>${fmtSigned(sum.netProfitKRW)}</b> (${fmtPct(sum.netRet)}) <span class="muted small">총자산 − 투입 원금</span></dd>` : ''}
+          <dt class="muted">매입액</dt><dd class="muted">${fmtMoney(sum.costKRW)} → 평가 ${fmtMoney(sum.valueKRW)}
+            <span class="${pctClass(sum.profitKRW)}">${fmtSigned(sum.profitKRW)} (${fmtPct(sum.ret)})</span></dd>
+          ${sum.realized.length ? `<dt class="muted">실현손익</dt><dd class="${pctClass(sum.realizedKRW)}">${fmtSigned(sum.realizedKRW)}</dd>` : ''}
         </dl>` : ''}
         ${fundDetail(v, sum)}
       </div>` : ''}

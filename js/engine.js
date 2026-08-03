@@ -859,19 +859,48 @@ export function virtualRows(v) {
   // 실현손익 — 실제 펀드와 같은 방식(매수 다리는 산 날 환율, 매도 다리는 판 날 환율)
   const realizedTotalKRW = realized.reduce((s, r) => s + realizedKRW(r), 0);
 
-  // 현금은 사용자가 직접 넣는다. 매매에서 자동으로 만들지 않는다 — 실제 펀드에서 장부가
-  // 추측한 현금과 실제 잔액이 어긋나 유령 손익이 생겼던 문제를 여기서 되풀이하지 않으려고.
-  const cash = { KRW: v?.cash?.KRW || 0, USD: v?.cash?.USD || 0 };
+  // ---- 투입 원금과 결산 --------------------------------------------------------
+  // 매매만으로 계산한 '밖에서 든 돈' — 매도 대금을 먼저 쓰고 모자란 만큼이 새 돈이다.
+  // (실제 펀드 capitalLedger와 같은 규칙. 여기선 통화를 원화 하나로 합쳐 단순하게 본다.)
+  let pool = 0, needed = 0, netBuyKRW = 0;
+  for (const t of trades) {
+    const cur = P.currencyOf(t.symbol);
+    if (t.side === 'buy') {
+      const c = P.toKRW(t.price * t.qty + (t.fee || 0), cur, t.date) || 0;
+      const use = Math.min(Math.max(0, pool), c);
+      pool -= use; needed += c - use; netBuyKRW += c;
+    } else {
+      const pr = P.toKRW(t.price * t.qty - (t.fee || 0), cur, t.date) || 0;
+      pool += pr; netBuyKRW -= pr;
+    }
+  }
+
+  // 설정 금액(seed)을 넣었으면 그게 투입 원금이다. 안 넣었으면 위에서 계산한 값을 쓴다.
+  const seed = Math.max(0, Number(v?.seed) || 0);
+  const investedKRW = seed > 0 ? seed : needed;
+
+  // 현금: 사용자가 직접 넣었으면 그 값. 안 넣었고 설정 금액이 있으면 남은 돈을 계산해 준다
+  // — 설정 금액 1,050만원으로 800만원어치를 샀으면 250만원은 현금으로 남아 있어야 하고,
+  // 그걸 0으로 두면 총자산이 모자라 '손해'처럼 보인다.
+  const manualCash = !!v?.cash;
+  const cash = manualCash
+    ? { KRW: v.cash.KRW || 0, USD: v.cash.USD || 0 }
+    : { KRW: seed > 0 ? Math.max(0, seed - netBuyKRW) : 0, USD: 0 };
   const cashKRW = (cash.KRW || 0) + (P.toKRW(cash.USD, 'USD') || 0);
 
+  const totalKRW = valueKRW + cashKRW;         // 총자산 = 보유 평가액 + 현금
   return {
     rows, trades, realized,
     costKRW, valueKRW,
     profitKRW: valueKRW - costKRW,               // 보유분 평가손익
     ret: costKRW > 0 ? valueKRW / costKRW - 1 : null,
     realizedKRW: realizedTotalKRW,               // 판 것들의 확정 손익
-    cash, cashKRW,
-    totalKRW: valueKRW + cashKRW,                // 총자산 = 보유 평가액 + 현금
+    cash, cashKRW, manualCash,
+    totalKRW,
+    // 결산 — 넣은 돈 대비 지금 얼마인가 (실제 펀드와 같은 기준)
+    seed, investedKRW, autoInvested: needed,
+    netProfitKRW: investedKRW > 0 ? totalKRW - investedKRW : null,
+    netRet: investedKRW > 0 ? totalKRW / investedKRW - 1 : null,
     pending: rows.reduce((s, r) => s + r.pendingLots, 0),
     bad: rows.reduce((s, r) => s + r.badLots, 0),
     oversold: realized.filter(r => r.oversold).length,   // 가진 것보다 많이 판 기록
