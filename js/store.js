@@ -9,15 +9,17 @@ export const SELL_REASON_TYPES = ['계획대로', '생각이 바뀌어서', '불
 export function defaultState() {
   return {
     version: 1,
-    // settings는 통째로 동기화됨 — 바꿀 때 반드시 updatedAt 갱신
-    // cashLog: 직접 입력한 현금 잔액 이력 [{date, KRW, USD}] — 비어 있으면 현금 0(주식만 합산)
-    settings: { fundName: 'PROJ210', inception: null, ghRepo: '', ghPat: '', cashLog: [], updatedAt: 0 },
+    // settings는 통째로 동기화됨(마지막에 저장한 기기가 이긴다) — 바꿀 때 반드시 updatedAt 갱신.
+    // **기록을 여기 두지 말 것.** 한때 cashLog가 여기 있었는데, 두 기기에서 현금을 입력하면
+    // 늦게 저장한 쪽이 상대의 입력을 통째로 지웠다(경고도 흔적도 없이).
+    settings: { fundName: 'PROJ210', inception: null, ghRepo: '', ghPat: '', updatedAt: 0 },
     trades: [],      // 매매 기록
     diary: [],       // 홀딩 일지
     principles: [],  // 투자 헌법
     letters: [],     // 주주 서한
     quotes: [],      // 글귀 서랍 (책·자료에서 모은 문장)
     watchlist: [],   // 관심 종목 (안 산 판단의 기록)
+    cashLog: [],     // 직접 입력한 현금 잔액 이력 [{id, date, KRW, USD}] — 비어 있으면 현금 0(주식만 합산)
     swaps: [],       // 교체 시뮬레이션 (보유 A → 관심 B 가정)
     loans: [],       // 투자용 대출(마이너스통장 등) 잔액 스냅샷 — 이자 비용 추적
     // 환전 내역(선택). 안 넣으면 앱이 매수 시점 시장 환율로 알아서 환전했다고 본다.
@@ -52,7 +54,7 @@ export function defaultState() {
 //
 // 청산 시 보관하고 비우는 기록. 글귀 서랍(quotes)은 펀드가 아니라 책에서 온 것이라 남긴다.
 // 설정(저장소·PIN·예금 가정 금리)도 앱 설정이지 펀드 기록이 아니므로 남는다.
-export const FUND_COLLS = ['trades', 'diary', 'principles', 'letters', 'watchlist', 'swaps', 'loans', 'exchanges', 'cashMoves', 'incomes'];
+export const FUND_COLLS = ['trades', 'diary', 'principles', 'letters', 'watchlist', 'swaps', 'loans', 'exchanges', 'cashMoves', 'incomes', 'cashLog'];
 
 // 지금 펀드를 청산해 archives에 넣고 장부를 비운다.
 // summary는 engine.fundSummary가 청산 시점에 계산한 성적표 — 열람할 때 다시 계산하지 않는다.
@@ -60,7 +62,6 @@ export function closeFund(state, { name, from, to, note, summary, newName, newIn
   const now = Date.now();
   const snapshot = {};
   for (const c of FUND_COLLS) snapshot[c] = JSON.parse(JSON.stringify(state[c] || []));
-  snapshot.cashLog = JSON.parse(JSON.stringify(state.settings.cashLog || []));
   snapshot.depositRate = state.settings.depositRate ?? 3;
   snapshot.inception = state.settings.inception || null;  // 복원할 때 이 펀드의 시작일을 되돌리려고
 
@@ -83,7 +84,6 @@ export function closeFund(state, { name, from, to, note, summary, newName, newIn
   }
   state.settings.fundName = newName || name;
   state.settings.inception = newInception || to;
-  state.settings.cashLog = [];
   state.settings.updatedAt = now;
   return ar;
 }
@@ -100,7 +100,6 @@ export function restoreFund(state, id) {
     for (const it of state[c]) delete state.deleted?.[it.id];
   }
   state.settings.fundName = ar.name;
-  state.settings.cashLog = JSON.parse(JSON.stringify(ar.snapshot.cashLog || []));
   state.settings.inception = ar.snapshot.inception || null;
   state.settings.updatedAt = now;
   state.archives = state.archives.filter(a => a.id !== id);
@@ -110,13 +109,18 @@ export function restoreFund(state, id) {
 }
 
 // 현금 잔액 입력 한 줄 기록 (같은 기준일이면 덮어쓰기). 홈·설정 양쪽이 공용으로 쓴다.
-// settings는 통째로 동기화되므로 updatedAt 갱신 필수([[memo-updatedat-invariant]]).
+// 다른 기록과 같은 항목 단위 컬렉션이라 기기 간 병합도 줄 단위로 된다 —
+// 같은 날짜를 두 기기에서 고치면 그 줄만 나중 것이 이기고, 다른 날짜 입력은 살아남는다.
 export function setCash(state, date, krw, usd) {
-  const log = (state.settings.cashLog || []).filter(x => x.date !== date);
-  log.push({ date, KRW: krw, USD: usd });
-  log.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
-  state.settings.cashLog = log;
-  state.settings.updatedAt = Date.now();
+  state.cashLog = state.cashLog || [];
+  const now = Date.now();
+  const cur = state.cashLog.find(x => x.date === date);
+  if (cur) {
+    cur.KRW = krw; cur.USD = usd; cur.updatedAt = now;
+  } else {
+    state.cashLog.push({ id: uid(), date, KRW: krw, USD: usd, createdAt: now, updatedAt: now });
+  }
+  state.cashLog.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
 }
 
 // 삭제는 반드시 이 함수로 — tombstone을 남겨 다른 기기에서 부활하지 않게 한다
@@ -169,7 +173,36 @@ function migrate(state) {
     delete state.settings.manualCash;
     state.settings.updatedAt = Date.now();
   }
-  if (!state.settings.cashLog) state.settings.cashLog = [];
+
+  // cashLog를 settings 밖으로 — settings는 통째로 동기화돼 두 기기에서 현금을 입력하면
+  // 늦게 저장한 쪽이 상대의 입력을 통째로 지웠다. 이제 항목 단위로 병합된다.
+  //
+  // **한 번만 하고 끝내면 안 된다.** 아직 옛 버전을 쓰는 기기가 settings.cashLog에 써 보내면
+  // 그것도 흡수해야 하므로, 볼 때마다 옮기고 원본은 비운다.
+  state.cashLog = state.cashLog || [];
+  const legacyCash = state.settings.cashLog;
+  if (Array.isArray(legacyCash) && legacyCash.length) {
+    const now = Date.now();
+    for (const e of legacyCash) {
+      const cur = state.cashLog.find(x => x.date === e.date);
+      if (cur) {
+        // 같은 날짜가 양쪽에 있으면 옛 값을 덮지 않는다 — 새 형식 쪽이 더 최근이다
+        continue;
+      }
+      state.cashLog.push({ id: uid(), date: e.date, KRW: e.KRW || 0, USD: e.USD || 0, createdAt: now, updatedAt: now });
+    }
+    state.cashLog.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    delete state.settings.cashLog;
+    state.settings.updatedAt = now;
+    save(state);   // 옛 위치를 지우기 전에 반드시 영속화 (PIN 이전과 같은 이유)
+  } else if (legacyCash !== undefined) {
+    delete state.settings.cashLog;
+    save(state);
+  }
+  // 옛 기록에 id가 없으면 붙인다(동기화가 id로 병합한다)
+  for (const e of state.cashLog) {
+    if (!e.id) { e.id = uid(); e.createdAt = e.createdAt || Date.now(); e.updatedAt = e.updatedAt || Date.now(); }
+  }
 
   // 앱을 열 때 시세 갱신을 요청하던 로직이 쓰던 키 — 그 기능이 없어졌으니 정리
   try { localStorage.removeItem('onefund.lastPriceTrigger'); } catch { /* 무시 */ }
@@ -192,14 +225,29 @@ export function save(state) {
   localStorage.setItem(KEY, JSON.stringify(state));
 }
 
+// 내보내기(백업 파일)에서는 비밀값을 뺀다.
+// 백업은 메일·클라우드·다른 PC로 옮겨 다니는데 GitHub 쓰기 토큰과 PIN 해시가 그대로 실려
+// 사본이 뜰 때마다 노출면이 하나씩 늘었다(2026-09-08 실측: 토큰이 든 파일 22개).
+// 가져오기 쪽에서 없는 값은 지금 기기 것을 그대로 두므로, 빼도 복원에 지장이 없다.
+const SECRET_KEYS = ['ghPat', 'pinHash'];
+
 export function exportJson(state) {
-  return JSON.stringify(state, null, 2);
+  const settings = { ...state.settings };
+  for (const k of SECRET_KEYS) delete settings[k];
+  return JSON.stringify({ ...state, settings }, null, 2);
 }
 
 // 가져오기: 병합이 아니라 통째 교체(단순함 우선). 호출부에서 확인창 필수.
-export function importJson(text) {
+// 단 비밀값(토큰·PIN)은 백업 파일에 없으므로 **지금 기기 것을 유지한다** — 안 그러면
+// 백업을 되돌릴 때마다 시세 저장소 연결이 끊기고 앱 잠금이 풀린다.
+export function importJson(text, current = null) {
   const s = JSON.parse(text);
   if (!s || !Array.isArray(s.trades)) throw new Error('형식이 다릅니다');
-  return Object.assign(defaultState(), s);
+  const next = Object.assign(defaultState(), s);
+  next.settings = { ...next.settings };
+  for (const k of SECRET_KEYS) {
+    if (next.settings[k] == null && current?.settings?.[k] != null) next.settings[k] = current.settings[k];
+  }
+  return next;
 }
 

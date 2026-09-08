@@ -393,6 +393,7 @@ function vSettings() {
         <button class="btn small" data-x="export">JSON 파일로 내보내기</button>
         <label class="btn small">JSON 가져오기<input type="file" accept=".json" data-x="import" style="display:none;"></label>
       </div>
+      <p class="small muted" style="margin:4px 0 0;">내보낸 파일에는 <b>GitHub 토큰과 앱 잠금 PIN이 들어가지 않습니다</b> — 백업 사본이 돌아다녀도 안전합니다. 가져올 때는 이 기기에 저장된 값을 그대로 씁니다.</p>
       <p class="small muted" style="margin:10px 0 0;">
         이 기기의 앱 버전: <b data-appver>확인 중…</b>
         <button class="btn small" data-x="forceupdate" style="margin-left:6px;">최신으로 갱신</button><br>
@@ -591,7 +592,8 @@ vSettings.bind_ = (root) => {
       okLabel: '삭제', danger: true,
     });
     if (!ok) return;
-    state.settings.cashLog = (state.settings.cashLog || []).filter(x => x.date !== date);
+    const gone = (state.cashLog || []).find(x => x.date === date);
+    if (gone) Store.removeItem(state, 'cashLog', gone.id);   // tombstone을 남겨야 다른 기기에서 안 살아난다
     state.settings.updatedAt = Date.now();
     saveNow(); render();
   }));
@@ -608,7 +610,7 @@ vSettings.bind_ = (root) => {
     const blob = new Blob([Store.exportJson(state)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `1인펀드_백업_${ts}.json`;
+    a.download = `PROJ210_백업_${ts}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   });
@@ -617,7 +619,7 @@ vSettings.bind_ = (root) => {
     if (!file) return;
     try {
       const text = await file.text();
-      const imported = Store.importJson(text);
+      const imported = Store.importJson(text, state);   // 토큰·PIN은 백업에 없으니 지금 기기 것을 유지
       const ok = await confirmModal({
         title: '데이터 가져오기',
         body: `현재 데이터(매매 ${state.trades.length}건)를 백업 파일(매매 ${imported.trades.length}건)로 통째로 교체합니다.\n\n교체 전에 현재 데이터를 내보내 두는 것을 권합니다.`,

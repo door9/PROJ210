@@ -2,7 +2,7 @@
 //
 // 회계 가정(단순함을 위해 고정, UI에 명시):
 //  - 평가액 = 그 시점 보유 주식 + 그 시점 현금. 현금은 사용자가 직접 입력한 값만 쓴다
-//    (settings.cashLog). 매도 대금을 앱이 현금으로 추정하지 않는다 — 실제 계좌 잔액은
+//    (state.cashLog). 매도 대금을 앱이 현금으로 추정하지 않는다 — 실제 계좌 잔액은
 //    입출금·환전·이자 때문에 앱이 알 수 없고, 추정치를 자산에 얹으면 거짓말이 된다.
 //  - 보유분 평가는 수정종가(배당·분할·병합 반영) 성장배수 × 매수원가. 즉 배당 재투자 가정.
 //  - 달러 자산은 해당일 환율로 원화 환산.
@@ -312,10 +312,11 @@ export function capitalLedger(state, upto = null) {
 }
 
 // ---- 현금: 사용자가 직접 입력한 잔액 -------------------------------------------
-// settings.cashLog = [{date, KRW, USD}] — 입력할 때마다 한 줄씩 쌓인다.
+// state.cashLog = [{id, date, KRW, USD}] — 입력할 때마다 한 줄씩 쌓인다.
+// (한때 settings 안에 있었으나 settings는 통째로 동기화돼 기기 간에 서로를 지웠다.)
 // 특정 시점의 현금 = 그 날짜 이하 마지막 입력값. 첫 입력 전에는 현금 0(= 주식만 합산).
 export function cashLog(state) {
-  return [...(state.settings?.cashLog || [])].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  return [...(state.cashLog || [])].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
 }
 
 // ---- 환전 내역 (선택 입력) ------------------------------------------------------
@@ -362,7 +363,7 @@ export function cashGap(state) {
   if (!entries.length) return null;
   const last = entries[entries.length - 1];
   // 그 날짜까지의 장부를 다시 세되, 마지막 입력 자체는 빼고 본다
-  const upto = { ...state, settings: { ...state.settings, cashLog: entries.slice(0, -1) } };
+  const upto = { ...state, cashLog: entries.slice(0, -1) };
   const { pool } = capitalLedger(upto, last.date);
   const gap = {};
   let any = false;
