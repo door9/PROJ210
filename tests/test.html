@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>PROJ210 회계 불변식 검사</title>
+<style>
+  body { font: 14px/1.6 system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  p.lead { color: #666; margin-top: 0; }
+  #sum { font-weight: 700; padding: 10px 12px; border-radius: 8px; margin: 12px 0; }
+  #sum.pass { background: #e7f5ec; color: #14532d; }
+  #sum.fail { background: #fdeaea; color: #7f1d1d; }
+  ul { list-style: none; padding: 0; }
+  #out > li { padding: 6px 10px; border-radius: 6px; margin-bottom: 4px; }
+  #out > li.good { background: #f2f7f4; }
+  #out > li.bad { background: #fdeaea; }
+  #out ul { margin: 6px 0 0 12px; font-size: 13px; color: #7f1d1d; }
+  #out ul li { list-style: disc; margin-left: 12px; }
+  code { background: #f0efe9; padding: 1px 5px; border-radius: 4px; }
+</style>
+<h1>PROJ210 회계 불변식 검사</h1>
+<p class="lead">지어낸 장부로 계산 규칙만 확인합니다 — 개인 기록은 쓰지 않습니다.
+로컬 서버를 띄운 뒤 <code>/tests/test.html</code>로 엽니다.</p>
+<div id="sum">실행 중…</div>
+<ul id="out"></ul>
+<script type="module">
+  import { runAll } from './run.js';
+  import './cases.js';
+  const r = await runAll(document.getElementById('out'));
+  const el = document.getElementById('sum');
+  el.className = r.fail ? 'fail' : 'pass';
+  el.textContent = r.fail ? `${r.total}개 중 ${r.fail}개 실패` : `${r.total}개 전부 통과`;
+  window.__result = r;
+</script>

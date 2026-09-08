@@ -236,6 +236,21 @@ export function marketToRefresh() {
   return stale.length === 1 ? stale[0].mkt : 'all';
 }
 
+// 테스트 전용 — 가짜 시세를 심는다. 앱은 절대 부르지 않는다.
+// 회계 엔진은 P.closeOn/growth/fxOn에 기대는데, 그걸 스텁 없이 검증하려면 실데이터가
+// 필요해진다(개인 기록이 테스트에 섞이면 안 된다). 그래서 seam을 하나만 열어 둔다.
+// entries: { 심볼: [[YYYY-MM-DD, 종가, 수정종가], ...] }
+// 진짜 시세 파일에는 currency가 늘 들어 있고 currencyOf가 그걸 읽는다 — 여기서도 채워야
+// 원·달러 환산이 실제와 같게 돈다(빠뜨렸더니 달러가 환산 없이 원화로 더해졌다).
+export function __seedForTests(entries, m = null) {
+  map.clear();
+  for (const [sym, closes] of Object.entries(entries)) {
+    ingest(sym, { symbol: sym, name: sym, currency: /\.(KS|KQ)$/.test(sym) ? 'KRW' : 'USD', closes });
+  }
+  meta = m || { updatedAt: Math.floor(Date.now() / 1000), symbols: Object.keys(entries), lastClose: {} };
+  source = 'test'; partial = false;
+}
+
 export const has = sym => map.has(sym);
 export const symbols = () => [...map.keys()];
 export const updatedAt = () => meta?.updatedAt ? new Date(meta.updatedAt * 1000) : null;
