@@ -28,10 +28,10 @@ export function openCashModal(focusCur = 'KRW') {
           <input type="date" name="date" max="${today}" value="${today}" required>
         </label>
         <label class="fld">원화 현금 (원)
-          <input name="cashKRW" type="number" step="any" min="0" inputmode="numeric" value="${latest?.KRW ?? ''}" placeholder="0">
+          <input name="cashKRW" type="text" inputmode="numeric" value="${latest?.KRW ?? ''}" placeholder="0">
         </label>
         <label class="fld">달러 현금 ($)
-          <input name="cashUSD" type="number" step="any" min="0" inputmode="decimal" value="${latest?.USD ?? ''}" placeholder="0">
+          <input name="cashUSD" type="text" inputmode="decimal" value="${latest?.USD ?? ''}" placeholder="0">
         </label>
       </div>
       <p class="hint" style="margin:2px 0 0;">비워두면 0으로 봅니다. 입력 이력 확인·삭제는 <a href="#/settings">설정</a>에서.</p>
@@ -41,13 +41,16 @@ export function openCashModal(focusCur = 'KRW') {
       </div>
     </form>`);
   const form = m.querySelector('#cash-quick');
+  // 세 자리 콤마 — type="number"로는 브라우저가 콤마를 아예 못 받으므로 text로 두고 직접 서식을 입힌다.
+  // 값을 읽을 땐 반드시 numOf() (parseFloat("1,234")는 1이 된다).
+  [form.cashKRW, form.cashUSD].forEach(el => bindThousands(el));
   const target = focusCur === 'USD' ? form.cashUSD : form.cashKRW;
   target.focus(); target.select();
   m.querySelector('[data-x=cancel]').onclick = closeModal;
   form.addEventListener('submit', e => {
     e.preventDefault();
-    const parse = v => { v = v.trim(); if (v === '') return 0; const n = parseFloat(v); return (isNaN(n) || n < 0) ? null : n; };
-    const krw = parse(form.cashKRW.value), usd = parse(form.cashUSD.value);
+    const parse = el => { if (String(el.value).trim() === '') return 0; const n = numOf(el); return (isNaN(n) || n < 0) ? null : n; };
+    const krw = parse(form.cashKRW), usd = parse(form.cashUSD);
     if (krw === null || usd === null) { toast('현금은 0 이상의 숫자로 입력하세요'); return; }
     Store.setCash(state, form.date.value, krw, usd);
     saveNow(); closeModal(); render();

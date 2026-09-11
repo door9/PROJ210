@@ -6,7 +6,7 @@ import * as E from './engine.js';
 import * as Dbx from './dropbox.js';
 import * as Sync from './sync.js';
 import * as Lock from './lock.js';
-import { uid, todayStr, esc, fmtMoney, fmtPct, pctClass, quarterOf } from './util.js';
+import { uid, todayStr, esc, fmtMoney, fmtPct, pctClass, quarterOf, bindThousands, numOf } from './util.js';
 
 // ---------- 주주 서한 ----------
 function packSummaryText(pk) {
@@ -452,10 +452,10 @@ function vSettings() {
           <input type="date" name="date" max="${todayStr()}" value="${todayStr()}" required>
         </label>
         <label class="fld">원화 현금 (원)
-          <input name="cashKRW" type="number" step="any" min="0" inputmode="numeric" value="${latestCash?.KRW ?? ''}" placeholder="0">
+          <input name="cashKRW" type="text" inputmode="numeric" value="${latestCash?.KRW ?? ''}" placeholder="0">
         </label>
         <label class="fld">달러 현금 ($)
-          <input name="cashUSD" type="number" step="any" min="0" inputmode="decimal" value="${latestCash?.USD ?? ''}" placeholder="0">
+          <input name="cashUSD" type="text" inputmode="decimal" value="${latestCash?.USD ?? ''}" placeholder="0">
         </label>
         <div class="full btn-row" style="margin:0;">
           <button class="btn primary" type="submit">저장</button>
@@ -572,11 +572,15 @@ vSettings.bind_ = (root) => {
     state.settings.updatedAt = Date.now();
     saveNow(); render(); toast(`예금 가정 금리를 연 ${v}%로 저장했습니다`);
   });
-  root.querySelector('#cash-form').addEventListener('submit', e => {
+  // 세 자리 콤마 — type="number"로는 브라우저가 콤마를 아예 못 받으므로 text로 두고 직접 서식을 입힌다.
+  // 값을 읽을 땐 반드시 numOf() (parseFloat("1,234")는 1이 된다).
+  const cashForm = root.querySelector('#cash-form');
+  [cashForm.cashKRW, cashForm.cashUSD].forEach(el => bindThousands(el));
+  cashForm.addEventListener('submit', e => {
     e.preventDefault();
     const f = e.target;
-    const parse = v => { v = v.trim(); if (v === '') return 0; const n = parseFloat(v); return (isNaN(n) || n < 0) ? null : n; };
-    const krw = parse(f.cashKRW.value), usd = parse(f.cashUSD.value);
+    const parse = el => { if (String(el.value).trim() === '') return 0; const n = numOf(el); return (isNaN(n) || n < 0) ? null : n; };
+    const krw = parse(f.cashKRW), usd = parse(f.cashUSD);
     if (krw === null || usd === null) { toast('현금은 0 이상의 숫자로 입력하세요'); return; }
     const date = f.date.value;
     if (!date) { toast('기준일을 입력하세요'); return; }

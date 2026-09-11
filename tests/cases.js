@@ -1,6 +1,6 @@
 // 회계 불변식 — 개발일지에서 실제로 터졌던 사고들을 그대로 시험으로 굳혔다.
 // 새 기능보다 이 파일이 먼저다. 여기가 초록이면 "숫자가 예전과 같다"는 뜻이다.
-import { test, eq, near } from './run.js';
+import { test, eq, near, ok } from './run.js';
 import * as E from '../js/engine.js';
 import * as Store from '../js/store.js';
 import { mergeAll } from '../js/sync.js';
@@ -164,4 +164,31 @@ test('펀드를 청산했다가 되돌리면 기록이 그대로 돌아온다', 
   eq(s.trades.length, 1, '복원 뒤 매매');
   eq(s.cashLog.length, 1, '복원 뒤 현금 입력');
   eq(s.cashMoves.length, 1, '복원 뒤 입출금');
+});
+
+// ── 13. 두 기기가 각자 같은 날짜를 넣어도 줄이 하나다 ────────────────────────
+// 현금 입력 id를 uid()로 만들었더니 PC와 폰이 각자 만든 id가 달라, 같은 날짜가 두 줄로
+// 병합됐다(2026-09-11 실제 사고: 13건이 26건이 됐다). id를 날짜에서 뽑아 막는다.
+test('같은 날짜를 두 기기에서 넣어도 한 줄로 합쳐진다', () => {
+  const phone = blank(), pc = blank();
+  Store.setCash(phone, '2026-01-02', 100, 1);
+  Store.setCash(pc, '2026-01-02', 200, 2);          // 같은 날짜, 다른 값
+  pc.cashLog[0].updatedAt = phone.cashLog[0].updatedAt + 1000;   // PC가 나중에 저장
+  const m = mergeAll(pc, phone);
+  eq(m.cashLog.length, 1, '병합 뒤 줄 수');
+  eq([m.cashLog[0].KRW, m.cashLog[0].USD], [200, 2], '나중에 저장한 값이 이긴다');
+});
+
+// ── 14. 이전 코드가 이미 생긴 중복을 걷어낸다 ───────────────────────────────
+test('같은 날짜가 두 줄이면 이전 시 최신 하나만 남고 나머지는 tombstone', () => {
+  const s = blank();
+  s.cashLog = [
+    { id: 'old-a', date: '2026-01-02', KRW: 100, USD: 1, createdAt: 1, updatedAt: 1000 },
+    { id: 'old-b', date: '2026-01-02', KRW: 999, USD: 9, createdAt: 1, updatedAt: 2000 },
+  ];
+  Store.migrate(s);
+  eq(s.cashLog.length, 1, '남은 줄 수');
+  eq([s.cashLog[0].KRW, s.cashLog[0].USD], [999, 9], '최신 값이 남는다');
+  eq(s.cashLog[0].id, 'cash-2026-01-02', '안정 id');
+  ok(!!s.deleted['old-a'] && !!s.deleted['old-b'], '밀려난 옛 id는 tombstone으로 남는다');
 });

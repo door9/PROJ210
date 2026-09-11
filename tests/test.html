@@ -22,9 +22,22 @@
 <div id="sum">실행 중…</div>
 <ul id="out"></ul>
 <script type="module">
-  import { runAll } from './run.js';
+  import { runAll, isolateStorage } from './run.js';
   import './cases.js';
-  const r = await runAll(document.getElementById('out'));
+  // 시험을 **돌리기 전에** 저장소를 갈아 끼운다 — store.js의 migrate/save가 실제 기록에 쓰는 것을 막는다.
+  // (import 시점엔 아무것도 실행되지 않고 test()가 등록만 되므로, 여기서 끼워도 늦지 않다.)
+  const isolated = isolateStorage();
+  const out = document.getElementById('out');
+  if (!isolated) {
+    const li = document.createElement('li');
+    li.className = 'bad';
+    li.textContent = '✕ 저장소를 격리하지 못했습니다 — 실제 기록이 바뀔 수 있으니 실행을 중단합니다';
+    out.appendChild(li);
+    document.getElementById('sum').className = 'fail';
+    document.getElementById('sum').textContent = '실행 중단';
+    throw new Error('storage not isolated');
+  }
+  const r = await runAll(out);
   const el = document.getElementById('sum');
   el.className = r.fail ? 'fail' : 'pass';
   el.textContent = r.fail ? `${r.total}개 중 ${r.fail}개 실패` : `${r.total}개 전부 통과`;

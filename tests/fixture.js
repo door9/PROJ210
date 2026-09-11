@@ -38,5 +38,7 @@ export const fx = (s, date, from, amount, rate, fee = 0) =>
   s.exchanges.push({ id: id(), date, from, amount, rate, fee, updatedAt: ++n });
 export const income = (s, date, cur, amount, kind = '배당') =>
   s.incomes.push({ id: id(), date, cur, amount, kind, name: '', note: '', updatedAt: ++n });
+// 현금 입력 id는 앱과 같은 규칙(날짜에서 뽑기)을 써야 한다 — 여기서 uid를 쓰면
+// 기기마다 id가 달라지는 진짜 문제를 시험이 못 잡는다.
 export const cash = (s, date, KRW, USD) =>
-  s.cashLog.push({ id: id(), date, KRW, USD, createdAt: ++n, updatedAt: n });
+  s.cashLog.push({ id: 'cash-' + date, date, KRW, USD, createdAt: ++n, updatedAt: n });

@@ -109,16 +109,21 @@ export function restoreFund(state, id) {
 }
 
 // 현금 잔액 입력 한 줄 기록 (같은 기준일이면 덮어쓰기). 홈·설정 양쪽이 공용으로 쓴다.
-// 다른 기록과 같은 항목 단위 컬렉션이라 기기 간 병합도 줄 단위로 된다 —
+// 현금 입력의 id는 **날짜에서 뽑는다**(uid()가 아니라). 하루에 한 줄이므로 날짜가 자연스러운
+// 열쇠이고, 무엇보다 **기기마다 id가 달라지면 안 된다** — 두 기기가 각자 uid()를 만들면
+// 같은 날짜가 서로 다른 id로 병합돼 목록이 두 벌이 된다(2026-09-08 이전 작업에서 실제로 그랬다).
+export const cashId = date => 'cash-' + date;
+
+// 항목 단위 컬렉션이라 기기 간 병합도 줄 단위로 된다 —
 // 같은 날짜를 두 기기에서 고치면 그 줄만 나중 것이 이기고, 다른 날짜 입력은 살아남는다.
 export function setCash(state, date, krw, usd) {
   state.cashLog = state.cashLog || [];
   const now = Date.now();
   const cur = state.cashLog.find(x => x.date === date);
   if (cur) {
-    cur.KRW = krw; cur.USD = usd; cur.updatedAt = now;
+    cur.id = cashId(date); cur.KRW = krw; cur.USD = usd; cur.updatedAt = now;
   } else {
-    state.cashLog.push({ id: uid(), date, KRW: krw, USD: usd, createdAt: now, updatedAt: now });
+    state.cashLog.push({ id: cashId(date), date, KRW: krw, USD: usd, createdAt: now, updatedAt: now });
   }
   state.cashLog.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
 }
@@ -145,7 +150,8 @@ export function load() {
 
 // 구버전 데이터 이전. 대출은 "잔액 변동 스냅샷(한 계좌)" → "계좌별 독립 대출"로 바뀜.
 // 옛 기록은 각각 별개 계좌로 보고 date를 시작일(startDate)로, 상환일(endDate)은 비움(보유 중).
-function migrate(state) {
+// export는 검사(tests/)가 이전 로직을 직접 돌려 보기 위한 것 — 앱은 load()에서만 부른다.
+export function migrate(state) {
   for (const l of state.loans || []) {
     if (l.startDate === undefined && l.date !== undefined) {
       l.startDate = l.date;
@@ -189,7 +195,7 @@ function migrate(state) {
         // 같은 날짜가 양쪽에 있으면 옛 값을 덮지 않는다 — 새 형식 쪽이 더 최근이다
         continue;
       }
-      state.cashLog.push({ id: uid(), date: e.date, KRW: e.KRW || 0, USD: e.USD || 0, createdAt: now, updatedAt: now });
+      state.cashLog.push({ id: cashId(e.date), date: e.date, KRW: e.KRW || 0, USD: e.USD || 0, createdAt: now, updatedAt: now });
     }
     state.cashLog.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
     delete state.settings.cashLog;
@@ -199,9 +205,37 @@ function migrate(state) {
     delete state.settings.cashLog;
     save(state);
   }
-  // 옛 기록에 id가 없으면 붙인다(동기화가 id로 병합한다)
-  for (const e of state.cashLog) {
-    if (!e.id) { e.id = uid(); e.createdAt = e.createdAt || Date.now(); e.updatedAt = e.updatedAt || Date.now(); }
+  // 현금 입력을 날짜당 한 줄로 정리하고 id를 날짜에서 다시 뽑는다.
+  //
+  // 처음 이전할 때 id를 uid()로 만들었더니, PC와 폰이 각자 이전을 돌려 **같은 날짜가 서로 다른
+  // id로 병합돼 목록이 두 벌**이 됐다(실제로 13건이 26건이 됐다. 값은 같아 계산엔 영향이 없었다).
+  // 날짜에서 뽑으면 어느 기기가 돌려도 같은 id가 나와 저절로 합쳐진다.
+  // 여기서 밀려나는 옛 id는 tombstone으로 남겨야 다른 기기에서 되살아나지 않는다.
+  {
+    const byDate = new Map();
+    for (const e of state.cashLog) {
+      const cur = byDate.get(e.date);
+      if (!cur || (e.updatedAt || 0) > (cur.updatedAt || 0)) byDate.set(e.date, e);
+    }
+    const keep = [...byDate.values()];
+    const survivors = new Set(keep.map(e => e.id));
+    let touched = keep.length !== state.cashLog.length;
+    state.deleted = state.deleted || {};
+    for (const e of state.cashLog) {
+      if (!survivors.has(e.id)) { state.deleted[e.id] = Date.now(); touched = true; }
+    }
+    for (const e of keep) {
+      const want = cashId(e.date);
+      if (e.id !== want) {
+        if (e.id) state.deleted[e.id] = Date.now();   // 옛 id는 묻어 둔다
+        e.id = want; e.updatedAt = Date.now(); touched = true;
+      }
+      e.createdAt = e.createdAt || Date.now();
+      e.updatedAt = e.updatedAt || Date.now();
+    }
+    keep.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    state.cashLog = keep;
+    if (touched) save(state);
   }
 
   // 앱을 열 때 시세 갱신을 요청하던 로직이 쓰던 키 — 그 기능이 없어졌으니 정리
