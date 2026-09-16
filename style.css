@@ -1,0 +1,379 @@
+/* PROJ210 — 스타일 */
+:root {
+  --bg: #f5f4ef;
+  --card: #ffffff;
+  --ink: #23292a;
+  --sub: #6b7472;
+  --line: #e3e1d8;
+  --accent: #0f4c3a;
+  --accent-soft: #e7efe9;
+  --up: #c73e3a;      /* 한국 관례: 상승 빨강 */
+  --down: #2f6bd8;    /* 하락 파랑 */
+  --flat: #8a918f;
+  --warn-bg: #fdf3e4;
+  --warn-ink: #8a5a17;
+  --danger: #b0372f;
+  --radius: 14px;
+  --nav-h: 58px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16191a; --card: #1f2425; --ink: #e8e6df; --sub: #98a09d;
+    --line: #32393a; --accent: #5cae8f; --accent-soft: #24332c;
+    --warn-bg: #33290f; --warn-ink: #e0b25e;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+  font-size: 15px; line-height: 1.55;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--accent); }
+
+/* 상단바 */
+#topbar {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--accent); color: #fff;
+  padding-top: env(safe-area-inset-top);
+}
+.topbar-inner {
+  max-width: 980px; margin: 0 auto; padding: 10px 16px;
+  display: flex; align-items: center; gap: 18px;
+}
+#fund-name { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: -0.01em; flex: none; white-space: nowrap; }
+/* 상단바 오른쪽 버튼 두 개 — 금액 가리기, 시세 갱신. 아이콘만(글자 없음) */
+#price-refresh, #amt-toggle {
+  flex: none;
+  width: 30px; height: 30px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; line-height: 1; color: #fff;
+  background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px; cursor: pointer;
+  transition: background 0.15s;
+}
+#amt-toggle { margin-left: auto; letter-spacing: 1px; }
+#amt-toggle[aria-pressed="true"] { background: rgba(255, 255, 255, 0.28); }
+#price-refresh:hover, #amt-toggle:hover { background: rgba(255, 255, 255, 0.22); }
+#price-refresh[disabled] { opacity: 0.55; cursor: default; }
+#price-refresh.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#price-status { flex: none; font-size: 11.5px; opacity: 0.75; text-align: right; line-height: 1.3; }
+#desktop-nav { display: none; gap: 2px; flex: none; }
+#desktop-nav a {
+  color: #fff; opacity: 0.75; text-decoration: none; font-size: 14px;
+  padding: 6px 10px; border-radius: 8px;
+  flex: none; white-space: nowrap; /* 폭 측정이 정확하도록 넘쳐도 쭈그러들지 않게 */
+}
+#desktop-nav a.active { opacity: 1; background: rgba(255,255,255,0.14); font-weight: 600; }
+/* 넘치는 메뉴를 담는 '더보기' — 버튼은 상단바(녹색) 위, 드롭다운은 본문 위에 뜬다 */
+#desktop-nav .nav-more { position: relative; display: inline-flex; }
+#desktop-nav .nav-more-btn {
+  color: #fff; opacity: 0.75; background: none; border: none; cursor: pointer;
+  font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px;
+}
+#desktop-nav .nav-more:hover .nav-more-btn { opacity: 1; }
+#desktop-nav .nav-more.active .nav-more-btn { opacity: 1; background: rgba(255,255,255,0.14); font-weight: 600; }
+#desktop-nav .nav-more-panel {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 6px; min-width: 152px; display: flex; flex-direction: column; gap: 2px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16); z-index: 30;
+}
+#desktop-nav .nav-more-panel[hidden] { display: none; }
+#desktop-nav .nav-more-panel a {
+  color: var(--ink); opacity: 1; text-decoration: none; font-size: 14px;
+  padding: 8px 12px; border-radius: 8px; white-space: nowrap;
+}
+#desktop-nav .nav-more-panel a:hover { background: var(--accent-soft); }
+#desktop-nav .nav-more-panel a.active { background: var(--accent-soft); color: var(--accent); opacity: 1; font-weight: 600; }
+@media (min-width: 760px) {
+  #desktop-nav { display: flex; }
+  #bottom-nav { display: none !important; }
+  main#view { padding-bottom: 40px !important; }
+}
+
+/* 본문 */
+main#view {
+  max-width: 980px; margin: 0 auto;
+  padding: 16px 14px calc(var(--nav-h) + env(safe-area-inset-bottom) + 24px);
+  outline: none;
+}
+.view-title { font-size: 20px; font-weight: 800; margin: 6px 2px 4px; letter-spacing: -0.02em; }
+
+/* 표 안에서 눌러서 그 종목만 걸러 보는 종목명 */
+.symlink { cursor: pointer; border-bottom: 1px dashed var(--line); }
+.symlink:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.view-desc { color: var(--sub); font-size: 13.5px; margin: 0 2px 14px; }
+
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px 16px; margin-bottom: 12px;
+}
+.card h3 { margin: 0 0 10px; font-size: 15px; font-weight: 700; }
+.card .hint { color: var(--sub); font-size: 12.5px; margin-top: 8px; }
+
+/* 숫자 색 */
+.up { color: var(--up); }
+.down { color: var(--down); }
+.flat { color: var(--flat); }
+
+/* 대시보드 히어로 */
+.hero { text-align: left; }
+.hero .big { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin: 2px 0; }
+.hero .row { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--sub); font-size: 13.5px; }
+/* 큰 숫자 아래 '투입 원금 / 평가 금액 / 수익 결산' — 라벨 열을 맞춰 세로로 읽히게 */
+.hero-facts {
+  display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px;
+  margin: 10px 0 0; font-size: 13.5px;
+}
+.hero-facts dt { color: var(--sub); white-space: nowrap; }
+.hero-facts dt::after { content: ':'; }
+.hero-facts dd { margin: 0; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.kpi .k { color: var(--sub); font-size: 12px; }
+.kpi .v { font-size: 17px; font-weight: 700; margin-top: 2px; }
+.kpi .s { font-size: 12px; color: var(--sub); margin-top: 2px; }
+/* .kpi .s(특이도 0,0,2,0)가 .up/.down(0,0,1,0)을 덮으므로, 같은 층위에서 색을 되살린다 */
+.kpi .s.up { color: var(--up); }
+.kpi .s.down { color: var(--down); }
+
+/* 표 */
+table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tbl th { text-align: left; color: var(--sub); font-weight: 600; font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tbl td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tbl tr:last-child td { border-bottom: none; }
+.tbl .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tbl-wrap { overflow-x: auto; }
+/* 보유 종목 표의 추세 스파크라인 */
+.tbl td.spark-cell { text-align: right; white-space: nowrap; vertical-align: middle; color: var(--sub); }
+.tbl td.spark-cell .spark { display: inline-block; vertical-align: middle; }
+.spark-none { color: var(--sub); }
+.tbl tr.year-sep td { background: var(--bg); font-weight: 700; font-size: 12.5px; color: var(--sub); padding: 6px 8px; }
+tr.row-link { cursor: pointer; }
+tr.row-link:hover { background: var(--accent-soft); }
+tr.row-link .chev { color: var(--sub); font-weight: 400; }
+
+/* 버튼 */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  border-radius: 10px; padding: 8px 14px; cursor: pointer; font-size: 14px; font-weight: 600;
+  min-height: 40px; box-sizing: border-box;   /* 높이를 못박아 둔다 — 글꼴·아이콘에 따라 버튼끼리 들쭉날쭉하지 않게 */
+}
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+.btn.small { padding: 5px 10px; font-size: 12.5px; border-radius: 8px; min-height: 31px; }
+/* 글줄 안에 끼우려고 일부러 납작하게 만든 버튼(인라인 padding 지정)은 높이를 강제하지 않는다 — 예: 입력 상한 줄의 '전액' */
+.btn[style*="padding"] { min-height: 0; }
+/* 버튼과 한 줄에 놓이는 입력칸·선택칸 — 옆 버튼과 높이를 맞춘다(.ctl = .btn, .ctl-s = .btn.small) */
+.ctl, .ctl-s { box-sizing: border-box; border: 1px solid var(--line); background: var(--bg); color: inherit; }
+.ctl { height: 40px; border-radius: 10px; padding: 0 10px; }
+.ctl-s { height: 31px; border-radius: 8px; padding: 0 8px; font-size: 13px; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* 폼 */
+/* align-items:start + core.alignFields — 같은 줄의 입력칸 윗변을 맞춘다.
+   아래 기준(end)이었을 때는 라벨이 두 줄로 접혀도 맞았지만, 한 칸에만 입력칸 아래 줄('최대 …')이
+   붙으면 옆 칸 전체가 그만큼 내려앉았다(상환·환전 창에서 25~66px). 이제 칸은 위에 붙이고,
+   라벨이 접힌 칸이 있으면 alignFields가 나머지 칸 위에 그만큼 여백을 준다. */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+.form-grid .full { grid-column: 1 / -1; }
+label.fld { display: block; font-size: 12.5px; color: var(--sub); font-weight: 600; }
+label.fld > input, label.fld > select, label.fld > textarea {
+  display: block; width: 100%; margin-top: 4px;
+  border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px;
+  background: var(--bg); font-size: 15px;
+}
+/* 한 줄 입력칸은 종류와 무관하게 같은 높이 — 기본값이 날짜 45 · 글자 43 · 선택 42px로 달라 나란히 두면 어긋났다 */
+label.fld > input:not([type=checkbox]):not([type=radio]), label.fld > select { height: 44px; box-sizing: border-box; }
+label.fld > textarea { min-height: 74px; resize: vertical; line-height: 1.5; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* 감정 태그 */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip {
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px;
+  font-size: 12.5px; cursor: pointer; background: var(--card); user-select: none;
+}
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tag {
+  display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 11.5px;
+  background: var(--accent-soft); color: var(--accent); margin-right: 4px; white-space: nowrap;
+}
+.tag.warn { background: var(--warn-bg); color: var(--warn-ink); }
+.tag.buy { background: #fdeaea; color: var(--up); }
+.tag.sell { background: #e8eefb; color: var(--down); }
+@media (prefers-color-scheme: dark) {
+  .tag.buy { background: #3a2423; }
+  .tag.sell { background: #22293a; }
+}
+
+/* 거래 타임라인 */
+.trade-item { padding: 8px 2px; border-bottom: 1px solid var(--line); }
+.trade-item:last-child { border-bottom: none; }
+.trade-head { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
+.trade-head .nm { font-weight: 700; }
+/* 종목명 = 그 종목 매매기록만 모아 보기로 가는 링크 */
+.trade-head a.nm { color: inherit; text-decoration: none; }
+.trade-head a.nm:hover { color: var(--accent); }
+.trade-head a.nm .chev { color: var(--sub); font-weight: 400; margin-left: 1px; }
+.trade-head a.nm:hover .chev { color: var(--accent); }
+.trade-head .dt { color: var(--sub); font-size: 12.5px; }
+.trade-head .amt { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 13.5px; }
+.trade-head .acts { display: flex; gap: 6px; flex: none; }
+/* 실현·보유·감정 등 칩을 제목줄에 인라인으로 — 메모만 아래로 늘어나게 한다 */
+.trade-head .chips { display: inline-flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12px; color: var(--sub); }
+.trade-body { color: var(--sub); font-size: 13px; margin-top: 5px; white-space: pre-wrap; }
+.trade-meta { font-size: 12px; color: var(--sub); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+
+/* 경고 박스 */
+.warnbox { background: var(--warn-bg); color: var(--warn-ink); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin: 8px 0; }
+.notice { background: var(--accent-soft); color: var(--accent); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin: 8px 0; }
+
+/* 차트 */
+.chart-wrap { width: 100%; overflow: hidden; }
+.chart-wrap svg { width: 100%; height: auto; display: block; }
+/* 상호작용 라인 차트 (만약) */
+.chartbox { position: relative; color: var(--ink); }
+.chart-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.chart-toolbar .chart-hint { margin-left: auto; }
+@media (max-width: 560px) { .chart-toolbar .chart-hint { display: none; } }
+.chart-scroll { position: relative; width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+.chart-tip {
+  position: absolute; z-index: 6; pointer-events: none;
+  background: var(--card); border: 1px solid var(--line); border-radius: 9px;
+  padding: 7px 9px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  font-size: 12px; min-width: 150px; max-width: 240px;
+}
+.chart-tip .tip-date { font-weight: 700; font-size: 11.5px; color: var(--sub); margin-bottom: 4px; }
+.chart-tip .tip-row { display: flex; align-items: center; gap: 6px; line-height: 1.75; }
+.chart-tip .tip-row .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.chart-tip .tip-nm { flex: 1; white-space: nowrap; }
+.chart-tip .tip-v { font-variant-numeric: tabular-nums; font-weight: 600; margin-left: 12px; white-space: nowrap; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--sub); margin-top: 8px; }
+.legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+/* 하단 내비 (모바일) */
+#bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+  display: flex; background: var(--card); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+#bottom-nav a {
+  flex: 1; text-align: center; text-decoration: none; color: var(--sub);
+  font-size: 10.5px; padding: 7px 0 6px; line-height: 1.2;
+}
+#bottom-nav a .ico { display: block; line-height: 1; margin-bottom: 2px; }
+#bottom-nav a .ico svg { width: 21px; height: 21px; display: block; margin: 0 auto; }
+
+/* 더보기 메뉴 단색 아이콘 */
+.mico { color: var(--accent); flex: 0 0 auto; }
+.mico svg { width: 22px; height: 22px; display: block; }
+#bottom-nav a.active { color: var(--accent); font-weight: 700; }
+
+/* 모달 */
+#modal-root:empty { display: none; }
+.modal-back {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 50;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.modal {
+  background: var(--card); width: 100%; max-width: 640px; max-height: 88vh; overflow-y: auto;
+  border-radius: 18px 18px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+}
+@media (min-width: 760px) {
+  .modal-back { align-items: center; }
+  .modal { border-radius: 18px; }
+}
+.modal h2 { margin: 0 0 12px; font-size: 17px; }
+
+/* 앱 잠금 (PIN) */
+.lock-back {
+  position: fixed; inset: 0; z-index: 100; background: var(--bg);
+  /* 위 정렬 — 글귀가 길든 없든 PIN 칸이 늘 같은 자리에 있도록. 가운데 정렬이면 글귀 길이에
+     따라 입력칸이 위아래로 움직인다. flex-start라 넘치는 내용도 잘리지 않고 아래로 흐른다. */
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: clamp(40px, 11vh, 96px) 24px 24px;
+  overflow-y: auto;
+}
+.lock-box { width: 100%; max-width: 300px; text-align: center; margin: 0 auto; }
+/* 자물쇠 — 이모지(🔒)는 기기마다 제 색으로 그려져 앱 톤과 따로 논다. 나머지 아이콘과 같은 선 아이콘으로 */
+.lock-logo { color: var(--sub); display: flex; justify-content: center; }
+.lock-logo svg { width: 22px; height: 22px; display: block; }
+.lock-title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-top: 10px; }
+.lock-sub { color: var(--sub); font-size: 13.5px; margin: 4px 0 18px; }
+.lock-input {
+  width: 100%; text-align: center; letter-spacing: 0.4em; font-size: 22px;
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--card);
+}
+.lock-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* PIN 가리기: type="password" 대신 CSS로 가린다.
+   비밀번호 칸이면 삼성패스·구글 비밀번호 관리자가 '자동 입력 사용하기'를 매번 띄우는데,
+   PIN은 이 앱 안에서만 쓰는 값이라 그 제안이 방해만 된다. 보이는 모습은 ●●●●로 같다. */
+.mask { -webkit-text-security: disc; text-security: disc; }
+.lock-err { color: var(--down); font-size: 13px; min-height: 20px; margin: 8px 0; }
+/* 잠금 화면 글귀 — PIN을 누르는 잠깐 눈에 걸리라고 두는 것이라 조용하게 */
+.lock-quote { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+/* PIN 칸이 위에 고정된 뒤로는 글귀가 길어도 아래로 흐를 뿐이라, 잘라내지 않고 다 보여준다 */
+.lock-quote .q-text { font-size: 15px; line-height: 1.75; color: var(--sub); }
+.lock-quote .q-text::before { content: '\201C'; color: var(--accent); margin-right: 2px; }
+.lock-quote .q-text::after { content: '\201D'; color: var(--accent); margin-left: 2px; }
+.lock-quote .q-src { color: var(--sub); font-size: 12px; opacity: 0.8; margin-top: 8px; }
+
+/* 토스트 */
+#toast-root { position: fixed; bottom: calc(var(--nav-h) + 18px); left: 0; right: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.toast { background: var(--ink); color: var(--bg); border-radius: 999px; padding: 8px 18px; font-size: 13.5px; opacity: 0.95; animation: toast-in 0.2s ease; }
+@keyframes toast-in { from { transform: translateY(8px); opacity: 0; } }
+
+/* 글귀 — 잠금 화면(.lock-quote)과 글귀 서랍(#/quotes)에서 쓴다 */
+.q-text {
+  font-family: "Batang", "바탕", "Noto Serif KR", Georgia, serif;
+  font-size: 16.5px; line-height: 1.8; white-space: pre-wrap;
+}
+.q-src { color: var(--sub); font-size: 12.5px; }
+
+/* 서한 */
+.letter-body { white-space: pre-wrap; font-size: 14.5px; line-height: 1.75; }
+textarea.letter-edit { width: 100%; min-height: 300px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--bg); line-height: 1.7; }
+
+/* 기타 */
+.muted { color: var(--sub); }
+.small { font-size: 12.5px; }
+.mt0 { margin-top: 0; }
+.list-plain { list-style: none; margin: 0; padding: 0; }
+.list-plain li { padding: 9px 0; border-bottom: 1px solid var(--line); }
+.list-plain li:last-child { border-bottom: none; }
+.empty { text-align: center; color: var(--sub); padding: 28px 8px; font-size: 13.5px; }
+details.acc { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; }
+details.acc summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
+.confbar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.confbar > div { height: 100%; background: var(--accent); }
+
+/* ⓘ 설명 — 화면 소개문·각주·설명 문단을 제목 옆으로 접어 둔다(core.foldNotes).
+   데스크톱은 마우스를 올리면, 폰은 누르면 뜬다(폰에는 마우스가 없다). */
+.info { position: relative; display: inline-block; vertical-align: baseline; margin-left: 4px; line-height: 1; font-weight: 400; }
+.info-i { border: 0; background: none; margin: 0; padding: 0 2px; font: inherit; font-size: 13px; line-height: 1; color: var(--sub); cursor: help; }
+.view-title .info-i { font-size: 15px; }
+.info-i:hover, .info.open .info-i, .info-i:focus-visible { color: var(--accent); }
+.info-tip {
+  display: none; position: fixed; z-index: 60; top: 0; left: 0;   /* 좌표는 core.placeTip이 넣는다 */
+  width: max-content; max-width: min(340px, calc(100vw - 32px));
+  padding: 10px 12px; background: var(--card); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+  font-size: 12.5px; font-weight: 400; line-height: 1.6; letter-spacing: 0; text-align: left; white-space: normal;
+}
+/* 아이콘과 말풍선 사이 틈을 지날 때 hover가 끊기지 않게 */
+.info-tip::before { content: ''; position: absolute; left: 0; right: 0; top: -10px; height: 10px; }
+.info.up .info-tip::before { top: auto; bottom: -10px; }   /* ⓘ 위로 뜬 경우엔 아래쪽 틈을 잇는다 */
+.info:hover .info-tip, .info.open .info-tip { display: block; }
+@media (hover: none) { .info:hover .info-tip { display: none; } .info.open .info-tip { display: block; } }
+.info-tip .info-sep { display: block; height: 1px; background: var(--line); margin: 9px 0; }
+.info-tip .warnbox, .info-tip .notice { margin: 0; }
+.info-inline { display: block; text-align: right; margin: 6px 2px 0; }

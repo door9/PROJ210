@@ -1,0 +1,67 @@
+// 앱 잠금(PIN). PIN 해시를 settings에 저장 → Dropbox로 PC·폰 동기화됨(평문 PIN이 아니라 SHA-256 해시).
+import { state, saveNow, ICONS } from './core.js';
+import { esc } from './util.js';
+
+const SALT = 'proj210.pin.v1';
+
+async function sha(pin) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(SALT + ':' + pin));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export const hasPin = () => !!state.settings.pinHash;
+
+export async function setPin(pin) {
+  state.settings.pinHash = await sha(pin);
+  state.settings.updatedAt = Date.now(); // 동기화에서 이 변경이 이기도록
+  saveNow();
+}
+export async function verify(pin) { return !!pin && state.settings.pinHash === await sha(pin); }
+export function clearPin() {
+  delete state.settings.pinHash;
+  state.settings.updatedAt = Date.now();
+  saveNow();
+}
+
+// 글귀 서랍에서 랜덤 한 문장. 잠금 화면이라 링크·버튼 없이 읽기 전용
+// (앱이 잠겨 있어 서랍으로 갈 수도, 다시 그릴 수도 없다).
+function quoteHtml() {
+  const qs = state.quotes || [];
+  if (!qs.length) return '';
+  const q = qs[Math.floor(Math.random() * qs.length)];
+  return `
+    <div class="lock-quote">
+      <div class="q-text">${esc(q.text)}</div>
+      ${q.source ? `<div class="q-src">— ${esc(q.source)}</div>` : ''}
+    </div>`;
+}
+
+// 앱 시작 시 호출. PIN이 맞을 때까지 화면을 가리고 대기.
+export function showLock() {
+  return new Promise(resolve => {
+    const root = document.getElementById('modal-root');
+    root.innerHTML = `
+      <div class="lock-back">
+        <div class="lock-box">
+          <div class="lock-logo">${ICONS.lock}</div>
+          <div class="lock-title">PROJ210</div>
+          <div class="lock-sub">PIN 번호를 입력하세요</div>
+          <input id="lock-pin" class="lock-input mask" type="text" inputmode="numeric" maxlength="12"
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                 data-form-type="other" data-lpignore="true" data-1p-ignore="true">
+          <div id="lock-err" class="lock-err"></div>
+          <button id="lock-ok" class="btn primary" style="width:100%;">확인</button>
+          ${quoteHtml()}
+        </div>
+      </div>`;
+    const input = root.querySelector('#lock-pin');
+    const err = root.querySelector('#lock-err');
+    setTimeout(() => input.focus(), 50);
+    const submit = async () => {
+      if (await verify(input.value)) { root.innerHTML = ''; resolve(); }
+      else { err.textContent = 'PIN이 맞지 않습니다'; input.value = ''; input.focus(); }
+    };
+    root.querySelector('#lock-ok').onclick = submit;
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  });
+}
