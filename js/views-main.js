@@ -9,6 +9,8 @@ import * as Lock from './lock.js';
 import { sparkline, lineChart, bindCharts } from './chart.js';
 
 // ---------- 홈 ----------
+// 보유 평가액 카드의 금액 가리기. 앱을 열 때마다 가린 상태로 시작한다(저장하지 않음).
+let heroHidden = true;
 function holdPeriod(from, to) {
   if (!from || !to) return '–';
   const [y1, m1, d1] = from.split('-').map(Number), [y2, m2, d2] = to.split('-').map(Number);
@@ -132,8 +134,9 @@ function vHome() {
   const sK = pf.sleeves.KRW, sU = pf.sleeves.USD;
   const bothCur = sK.has && sU.has;
   // 통화별 금액을 "₩X + $Y"로. 한 통화만 쓰면 그 통화만 나온다.
-  const byCur = (krw, usd) => [sK.has ? fmtMoney(krw) : null,
-                               sU.has ? fmtMoney(usd, 'USD') : null].filter(Boolean).join(' + ') || fmtMoney(0);
+  const money = (v, cur = 'KRW') => heroHidden ? (cur === 'USD' ? '$••••' : '₩•••••') : fmtMoney(v, cur);
+  const byCur = (krw, usd) => [sK.has ? money(krw) : null,
+                               sU.has ? money(usd, 'USD') : null].filter(Boolean).join(' + ') || money(0);
   const depStr = byCur(pf.depositKRW, pf.depositUSD);
   const valStr = byCur(cut(sK.value, sK.sellCost), cut(sU.value, sU.sellCost));   // 평가 금액 = 보유 주식 + 현금 (수익률과 같은 기준)
   // 뺀 돈이 있으면 따로 보여 준다 — 안 그러면 '원금 > 평가'인데 수익률은 +라 앞뒤가 안 맞아 보인다
@@ -164,7 +167,10 @@ function vHome() {
     ${alerts.join('')}
     <div class="card hero">
       <div class="row"><span class="muted small">보유 평가액 (${heroNote})</span></div>
-      <div class="big">${fmtMoney(cut(pf.totalKRW, pf.sellCostKRW))}</div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="big">${money(cut(pf.totalKRW, pf.sellCostKRW))}</div>
+        <button type="button" class="btn small" id="hero-eye" style="margin-left:auto; flex:none;" aria-pressed="${heroHidden ? 'false' : 'true'}">${heroHidden ? '금액 보기' : '금액 가리기'}</button>
+      </div>
       <dl class="hero-facts">
         <dt>넣은 돈</dt><dd>${depStr}</dd>
         ${hasOut ? `<dt>뺀 돈</dt><dd>${outStr}</dd>` : ''}
@@ -175,7 +181,7 @@ function vHome() {
       <label class="small" style="display:flex; align-items:center; gap:7px; margin-top:10px; cursor:pointer;">
         <input type="checkbox" id="net-fees" style="width:auto; margin:0;" ${netFee ? 'checked' : ''}>
         <span>수수료·세금 빼고 보기 ${netFee && pf.sellCostKRW > 0
-          ? `<b>(−${fmtMoney(pf.sellCostKRW)})</b>`
+          ? `<b>(−${money(pf.sellCostKRW)})</b>`
           : '<span class="muted">— 지금 전부 팔면 드는 비용</span>'}</span>
       </label>
       <p class="small muted" data-note style="margin:6px 0 0;">지금 보유 종목을 <b>전부 판다고 가정</b>하고 수수료·세금을 뺍니다(토스증권 기준).
@@ -217,6 +223,7 @@ vHome.bind_ = (root) => {
   root.querySelector('[data-act=buy]')?.addEventListener('click', () => openTradeForm('buy'));
   root.querySelector('[data-act=sell]')?.addEventListener('click', () => openTradeForm('sell'));
   root.querySelector('[data-act=diary]')?.addEventListener('click', () => go('diary'));
+  root.querySelector('#hero-eye')?.addEventListener('click', () => { heroHidden = !heroHidden; render(); });
   root.querySelector('#net-fees')?.addEventListener('change', e => {
     state.settings.netOfFees = e.target.checked;
     state.settings.updatedAt = Date.now();

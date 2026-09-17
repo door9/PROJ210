@@ -40,20 +40,8 @@ export function prevQuarter(q) {
   return qn === 1 ? `${y - 1}-Q4` : `${y}-Q${qn - 1}`;
 }
 
-// ---- 금액 가리기 -----------------------------------------------------------------
-let amountsHidden = true;
-export const amountsAreHidden = () => amountsHidden;
-export function setAmountsHidden(v) { amountsHidden = !!v; }
-// 잠깐만 실제 숫자가 필요할 때 (AI 복기 데이터 팩처럼 밖으로 내보내는 글)
-export function withAmounts(fn) {
-  const was = amountsHidden;
-  amountsHidden = false;
-  try { return fn(); } finally { amountsHidden = was; }
-}
-
 export function fmtMoney(v, currency = 'KRW') {
   if (v == null || isNaN(v)) return '–';
-  if (amountsHidden) return currency === 'USD' ? '$••••' : '₩•••••';
   if (currency === 'USD') return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return '₩' + Math.round(v).toLocaleString('ko-KR');
 }
@@ -61,7 +49,6 @@ export function fmtMoney(v, currency = 'KRW') {
 // 억/만 단위 한글 표기 (억은 항상, 만은 4자리 고정)
 export function moneyKorean(v) {
   if (v == null || isNaN(v)) return '–';
-  if (amountsHidden) return '••••만원';
   const neg = v < 0;
   const man = Math.round(Math.abs(v) / 1e4); // 만 단위로 반올림 (자리올림 자동 처리)
   const eok = Math.floor(man / 1e4);
@@ -72,7 +59,6 @@ export function moneyKorean(v) {
 // 부호를 붙인 원화 정수(₩ 없이). 색은 pctClass로 — 상승 빨강·하락 파랑
 export function fmtSigned(v) {
   if (v == null || isNaN(v)) return '–';
-  if (amountsHidden) return '•••';
   const n = Math.round(v);
   return (n > 0 ? '+' : '') + n.toLocaleString('ko-KR');
 }

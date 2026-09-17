@@ -6,13 +6,10 @@ import * as E from './engine.js';
 import * as Dbx from './dropbox.js';
 import * as Sync from './sync.js';
 import * as Lock from './lock.js';
-import { uid, todayStr, esc, fmtMoney, fmtPct, pctClass, quarterOf, bindThousands, numOf, withAmounts } from './util.js';
+import { uid, todayStr, esc, fmtMoney, fmtPct, pctClass, quarterOf, bindThousands, numOf } from './util.js';
 
 // ---------- 주주 서한 ----------
 function packSummaryText(pk) {
-  return withAmounts(() => packSummaryBody(pk));
-}
-function packSummaryBody(pk) {
   const pct = v => v == null ? '?' : ((v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%');
   const L = [];
   L.push(`[자동 요약 — ${pk.period} (${pk.start} ~ ${pk.end})]`);
@@ -228,7 +225,7 @@ function vAI() {
     </div>`;
 }
 vAI.bind_ = (root) => {
-  const make = () => withAmounts(() => E.aiPack(state));
+  const make = () => E.aiPack(state);
   root.querySelector('[data-x=copy]').addEventListener('click', async () => {
     const text = make();
     try {

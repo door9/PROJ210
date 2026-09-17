@@ -2,7 +2,6 @@
 import * as Store from './store.js';
 import * as P from './prices.js';
 import * as Sync from './sync.js';
-import { amountsAreHidden, setAmountsHidden } from './util.js';
 
 export const state = Store.load();
 export function saveNow() {
@@ -326,8 +325,8 @@ function layoutDesktopNav(route) {
 
   // 메뉴가 쓸 수 있는 폭: 메뉴를 비운 상태에서 '메뉴 시작점 ~ 갱신버튼 시작점' 거리를 잰다.
   dn.innerHTML = '';
-  const rightBtn = document.getElementById('amt-toggle') || document.getElementById('price-refresh');
-  const avail = rightBtn.getBoundingClientRect().left - dn.getBoundingClientRect().left - gap;
+  const refresh = document.getElementById('price-refresh');
+  const avail = refresh.getBoundingClientRect().left - dn.getBoundingClientRect().left - gap;
 
   // 1차: 전부 펼쳐 각 항목의 자연 폭을 잰다 (a는 flex:none이라 넘쳐도 안 쭈그러든다)
   dn.innerHTML = NAV_DESKTOP.map(([id, label]) => navLink(id, label, route)).join('')
@@ -458,21 +457,3 @@ export function initTopbar() {
     if (p) { p.setAttribute('hidden', ''); p.parentElement.querySelector('.nav-more-btn')?.setAttribute('aria-expanded', 'false'); }
   });
 }
-
-// ---- 금액 가리기 버튼 ------------------------------------------------------------
-// 기본은 가린 상태. 누르면 보이고, 다시 누르면 가려진다. 앱을 다시 열면 언제나 가려진 상태로 시작한다.
-const amtBtn = document.getElementById('amt-toggle');
-function syncAmountToggle() {
-  if (!amtBtn) return;
-  const hidden = amountsAreHidden();
-  amtBtn.textContent = hidden ? '•••' : '₩';
-  amtBtn.setAttribute('aria-pressed', hidden ? 'false' : 'true');
-  amtBtn.title = hidden ? '금액 보기' : '금액 가리기';
-  amtBtn.setAttribute('aria-label', amtBtn.title);
-}
-amtBtn?.addEventListener('click', () => {
-  setAmountsHidden(!amountsAreHidden());
-  syncAmountToggle();
-  render();
-});
-syncAmountToggle();
