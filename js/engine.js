@@ -369,6 +369,17 @@ export function portfolio(state, date = null) {
     r.hasPrice = r.hasPrice && v.hasPrice;
   }
 
+  // 보유 시작일: 0주에서 보유로 넘어간 마지막 날 (일부 매도는 보유가 이어진 것으로 본다)
+  const holdSince = new Map(), heldNow = new Map();
+  for (const t of trades) {
+    if (t.date > d) break;
+    const q = heldNow.get(t.symbol) || 0;
+    const nq = Math.max(0, q + (t.side === 'buy' ? t.qty : -t.qty));
+    if (q <= 1e-9 && nq > 1e-9) holdSince.set(t.symbol, t.date);
+    heldNow.set(t.symbol, nq);
+  }
+  for (const r of bySym.values()) r.holdSince = holdSince.get(r.symbol) || r.firstBuy;
+
   // 원가만 이동평균으로 바꿔 끼운다(증권사와 같은 기준).
   for (const r of bySym.values()) {
     const a = avg.get(r.symbol);

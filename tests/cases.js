@@ -321,3 +321,17 @@ test('포트폴리오가 통화별 매도 비용을 함께 내놓는다', () => 
   eq(pf.sleeves.KRW.sellCost, kr.sellCost, '원화 슬리브');
   near(pf.sellCostKRW, kr.sellCost + us.sellCost * 1000, 0.01, '원화 환산 합계');
 });
+
+// ── 25. 보유 시작일 ────────────────────────────────────────────────────────────
+test('보유 시작일은 일부 매도에는 유지되고 전량 매도 후 재매수하면 다시 시작한다', () => {
+  seed();
+  const s = blank();
+  buy(s, '2026-01-02', 'AAA', 100, 10);
+  sell(s, '2026-01-05', 'AAA', 110, 4);            // 일부 매도 — 보유 이어짐
+  buy(s, '2026-01-06', 'BBB', 10, 5);
+  sell(s, '2026-01-07', 'BBB', 12, 5);             // 전량 매도
+  buy(s, '2026-02-02', 'BBB', 20, 3);              // 다시 매수
+  const pf = E.portfolio(s, '2026-03-02');
+  eq(pf.rows.find(r => r.symbol === 'AAA').holdSince, '2026-01-02', '일부 매도');
+  eq(pf.rows.find(r => r.symbol === 'BBB').holdSince, '2026-02-02', '재매수');
+});

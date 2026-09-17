@@ -9,6 +9,15 @@ import * as Lock from './lock.js';
 import { sparkline, lineChart, bindCharts } from './chart.js';
 
 // ---------- 홈 ----------
+function holdPeriod(from, to) {
+  if (!from || !to) return '–';
+  const [y1, m1, d1] = from.split('-').map(Number), [y2, m2, d2] = to.split('-').map(Number);
+  let months = (y2 - y1) * 12 + (m2 - m1), days = d2 - d1;
+  if (days < 0) { months -= 1; days += new Date(y2, m2 - 1, 0).getDate(); }
+  if (months >= 12) return `${Math.floor(months / 12)}년${months % 12 ? ` ${months % 12}개월` : ''}`;
+  if (months >= 1) return `${months}개월${days ? ` ${days}일` : ''}`;
+  return `${Math.max(0, Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 864e5))}일`;
+}
 export function openCashModal(focusCur = 'KRW') {
   const log = E.cashLog(state);
   const latest = log[log.length - 1] || null;
@@ -98,21 +107,23 @@ function vHome() {
   const holdRows = pf.rows.map(r => `
     <tr class="row-link" data-sym="${esc(r.symbol)}">
       <td><b>${esc(r.name)}</b> <span class="chev">›</span><br><span class="muted small">${esc(r.symbol)}</span></td>
-      <td class="num">${fmtQty(r.qty)}주</td>
+      <td class="spark-cell">${sparkline(P.recentAdj(r.symbol))}</td>
+      <td class="num ${pctClass(rowRet(r))}">${fmtPct(rowRet(r))}</td>
+      <td class="num">${fmtQty(r.qty)}주<br><span class="muted small">${fmtMoney(r.avgPrice, r.cur)}</span></td>
       <td class="num">${fmtMoney(r.cost, r.cur)}<br><span class="muted small">${(r.costWeight * 100).toFixed(1)}%</span></td>
       <td class="num">${fmtMoney(cut(r.value, r.sellCost), r.cur)}<br><span class="muted small">${(r.weight * 100).toFixed(1)}%</span></td>
-      <td class="num ${pctClass(rowRet(r))}">${fmtPct(rowRet(r))}</td>
-      <td class="spark-cell">${sparkline(P.recentAdj(r.symbol))}</td>
+      <td class="num">${holdPeriod(r.holdSince, pf.date)}<br><span class="muted small">${r.holdSince.slice(2).replace(/-/g, '.')}~</span></td>
     </tr>`).join('');
   // 현금 잔액 — 사용자가 직접 입력한 값만 (앱은 매도 대금을 현금으로 추정하지 않는다).
   const cashRow = (label, amt, curc) => `
     <tr class="row-link" data-cash="${curc}">
       <td><b>${label}</b> <span class="chev">›</span><br><span class="muted small">${pf.cashTracked ? esc(pf.cashAsOf) + ' 입력' : '미입력 — 눌러서 설정'}</span></td>
+      <td class="spark-cell">–</td>
+      <td class="num">–</td>
       <td class="num">–</td>
       <td class="num">–</td>
       <td class="num">${fmtMoney(amt, curc)}</td>
       <td class="num">–</td>
-      <td class="spark-cell">–</td>
     </tr>`;
   const cashRows = cashRow('원화 현금', pf.cash.KRW, 'KRW') + cashRow('달러 현금', pf.cash.USD, 'USD');
 
@@ -189,8 +200,8 @@ function vHome() {
     <div class="card">
       <h3>보유 종목</h3>
       <div class="tbl-wrap"><table class="tbl">
-        <tr><th>종목</th><th class="num">수량</th><th class="num">매입액<br><span class="muted">(매입비중)</span></th><th class="num">평가액<br><span class="muted">(평가비중)</span></th><th class="num">수익률</th><th class="num">그래프</th></tr>
-        ${holdRows || '<tr><td colspan="6" class="muted">보유 중인 종목이 없습니다</td></tr>'}${cashRows}
+        <tr><th>종목</th><th class="num">그래프</th><th class="num">수익률</th><th class="num">수량<br><span class="muted">(평단가)</span></th><th class="num">매입액<br><span class="muted">(매입비중)</span></th><th class="num">평가액<br><span class="muted">(평가비중)</span></th><th class="num">보유기간</th></tr>
+        ${holdRows || '<tr><td colspan="7" class="muted">보유 중인 종목이 없습니다</td></tr>'}${cashRows}
       </table></div>
     </div>
     <div class="btn-row">
