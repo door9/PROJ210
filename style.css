@@ -380,7 +380,9 @@ details.acc summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
 
 /* 홈 보유 종목 표: 종목·그래프는 내용만큼, 남는 너비는 숫자 열이 나눈다 */
 .tbl.hold-tbl th { text-align: center; }
-.tbl.hold-tbl td, .tbl.hold-tbl td.num, .tbl.hold-tbl td.spark-cell { text-align: center; vertical-align: middle; }
+.tbl.hold-tbl td { vertical-align: middle; }
+.tbl.hold-tbl td.num { text-align: right; }
+.tbl.hold-tbl td.spark-cell { text-align: center; }
 .tbl.hold-tbl td.nm-cell { text-align: left; white-space: nowrap; width: 1%; }
 .tbl.hold-tbl td.spark-cell { width: 1%; }
 .tbl.hold-tbl th:nth-child(n+3) { width: 19%; }   /* 숫자 열 다섯 개는 같은 너비 */
