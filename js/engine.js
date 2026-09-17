@@ -26,14 +26,16 @@ export function replay(trades, upto = null) {
 
   for (const t of trades) {
     if (upto && t.date > upto) break;
-    const a = avg.get(t.symbol) || { qty: 0, cost: 0 };
+    const a = avg.get(t.symbol) || { qty: 0, cost: 0, gross: 0 };
     if (t.side === 'buy') {
       open.push({ t, qtyLeft: t.qty });
       a.qty += t.qty;
       a.cost += t.price * t.qty + (t.fee || 0);   // 수수료는 매입 원가에 포함
+      a.gross = (a.gross || 0) + t.price * t.qty; // 평단가 표시용(수수료 제외)
       avg.set(t.symbol, a);
     } else {
       const unitAvg = a.qty > 0 ? a.cost / a.qty : 0;
+      const unitGross = a.qty > 0 ? (a.gross || 0) / a.qty : 0;
       let need = t.qty, costFifo = 0, wDays = 0;
       const parts = [];
       for (const lot of open) {
@@ -51,7 +53,8 @@ export function replay(trades, upto = null) {
       // 판 만큼 수량만 줄인다 — 평균 단가는 그대로(이동평균법의 핵심)
       a.qty = Math.max(0, a.qty - t.qty);
       a.cost = unitAvg * a.qty;
-      if (a.qty <= 0.000001) { a.qty = 0; a.cost = 0; }   // 전량 매도 → 다음 매수부터 새로
+      a.gross = unitGross * a.qty;
+      if (a.qty <= 0.000001) { a.qty = 0; a.cost = 0; a.gross = 0; }   // 전량 매도 → 다음 매수부터 새로
       avg.set(t.symbol, a);
       realized.push({
         sell: t, parts, costSum, costFifo, proceeds,
@@ -387,7 +390,9 @@ export function portfolio(state, date = null) {
     const mvCost = (a.cost / a.qty) * r.qty;     // 이동평균 단가 × 보유 수량
     r.costKRW *= mvCost / r.cost;
     r.cost = mvCost;
-    r.avgPrice = a.cost / a.qty;                 // 화면에 그대로 보여 줄 평균 단가
+    // 평단가는 증권사 표시와 같게: 수수료·세금 제외, 원·센트 미만 버림 (매입액·수익률은 수수료 포함 그대로)
+    const g = (a.gross || 0) / a.qty;
+    r.avgPrice = r.cur === 'USD' ? Math.floor(g * 100 + 1e-9) / 100 : Math.floor(g + 1e-9);
   }
 
   const rows = [...bySym.values()].map(r => ({

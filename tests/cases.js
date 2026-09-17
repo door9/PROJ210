@@ -335,3 +335,17 @@ test('보유 시작일은 일부 매도에는 유지되고 전량 매도 후 재
   eq(pf.rows.find(r => r.symbol === 'AAA').holdSince, '2026-01-02', '일부 매도');
   eq(pf.rows.find(r => r.symbol === 'BBB').holdSince, '2026-02-02', '재매수');
 });
+
+// ── 26. 평단가: 수수료 제외, 원·센트 미만 버림 ──────────────────────────────────
+test('평단가는 수수료를 빼고 버림으로 표시한다', () => {
+  seed();
+  const s = blank();
+  buy(s, '2026-01-02', 'AAA', 100, 3, 3);
+  buy(s, '2026-01-02', 'AAA', 100.01, 3, 3);        // 수수료 제외 평균 100.005
+  buy(s, '2026-01-02', '111111.KS', 1000, 3, 10);
+  buy(s, '2026-01-02', '111111.KS', 1001, 3, 10);   // 수수료 제외 평균 1000.5
+  const pf = E.portfolio(s, '2026-01-02');
+  near(pf.rows.find(r => r.symbol === 'AAA').avgPrice, 100.00, 1e-9, '달러');
+  eq(pf.rows.find(r => r.symbol === '111111.KS').avgPrice, 1000, '원화');
+  near(pf.rows.find(r => r.symbol === 'AAA').cost, 606.03, 0.001, '매입액은 수수료 포함');
+});

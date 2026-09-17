@@ -377,3 +377,6 @@ details.acc summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
 .info-tip .info-sep { display: block; height: 1px; background: var(--line); margin: 9px 0; }
 .info-tip .warnbox, .info-tip .notice { margin: 0; }
 .info-inline { display: block; text-align: right; margin: 6px 2px 0; }
+
+/* 홈 보유 종목 표: 머리글 가운데 정렬 */
+.tbl.hold-tbl th { text-align: center; }
