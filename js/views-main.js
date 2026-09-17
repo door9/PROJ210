@@ -106,7 +106,7 @@ function vHome() {
 
   const holdRows = pf.rows.map(r => `
     <tr class="row-link" data-sym="${esc(r.symbol)}">
-      <td><b>${esc(r.name)}</b> <span class="chev">›</span><br><span class="muted small">${esc(r.symbol)}</span></td>
+      <td class="nm-cell"><b class="nm" title="${esc(r.name)}">${esc(r.name)}</b> <span class="chev">›</span><br><span class="muted small">${esc(r.symbol)}</span></td>
       <td class="spark-cell">${sparkline(P.recentAdj(r.symbol), { up: (rowRet(r) ?? 0) >= 0 })}</td>
       <td class="num ${pctClass(rowRet(r))}">${fmtPct(rowRet(r))}</td>
       <td class="num">${fmtQty(r.qty)}주<br><span class="muted small">${fmtMoney(r.avgPrice, r.cur)}</span></td>
@@ -117,7 +117,7 @@ function vHome() {
   // 현금 잔액 — 사용자가 직접 입력한 값만 (앱은 매도 대금을 현금으로 추정하지 않는다).
   const cashRow = (label, amt, curc) => `
     <tr class="row-link" data-cash="${curc}">
-      <td><b>${label}</b> <span class="chev">›</span><br><span class="muted small">${pf.cashTracked ? esc(pf.cashAsOf.slice(2).replace(/-/g, '.')) + '. 기준' : '미입력 — 눌러서 설정'}</span></td>
+      <td class="nm-cell"><b class="nm">${label}</b> <span class="chev">›</span><br><span class="muted small">${pf.cashTracked ? esc(pf.cashAsOf.slice(2).replace(/-/g, '.')) + '. 기준' : '미입력 — 눌러서 설정'}</span></td>
       <td class="spark-cell">–</td>
       <td class="num">–</td>
       <td class="num">–</td>
