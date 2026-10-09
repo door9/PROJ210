@@ -11,12 +11,16 @@ import './views-write.js';
 import './views-funds.js';
 import './views-virtual.js';
 
+let unlocked;
+const whenUnlocked = new Promise(r => { unlocked = r; });   // 잠금 화면 뒤에 안내가 숨지 않게
+
 async function init() {
   // Dropbox OAuth 복귀 처리
   const justConnected = await Dbx.handleCallback().catch(() => false);
 
   // PIN 잠금: 설정돼 있으면 맞을 때까지 화면을 가림
   if (Lock.hasPin()) await Lock.showLock();
+  unlocked();
 
   Sync.init({
     state,
@@ -131,11 +135,26 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
     reloading = true;
     location.reload();
   });
+  if (new URLSearchParams(location.search).has('login')) history.replaceState(null, '', location.pathname + location.hash);
+  // 접속 로그인이 만료되면 sw.js 요청이 로그인 화면으로 돌려진다
+  const loginExpired = () => fetch('sw.js', { cache: 'no-store', redirect: 'manual' }).then(r => r.type === 'opaqueredirect').catch(() => false);
+  let loginAsked = false;
   navigator.serviceWorker.register('sw.js').then(reg => {
-    reg.update().catch(() => {});
-    setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+    const check = async () => {
+      if (await loginExpired()) {
+        if (!loginAsked) {
+          loginAsked = true;
+          whenUnlocked.then(() => toast('로그인이 만료되어 새 버전을 받지 못합니다.', 15000,
+            { label: '다시 로그인', run: () => location.assign('./?login=1') }));
+        }
+        return;
+      }
+      reg.update().catch(() => {});
+    };
+    check();
+    setInterval(check, 30 * 60 * 1000);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      if (document.visibilityState === 'visible') check();
     });
   }).catch(() => {});
 }

@@ -10,10 +10,18 @@ export function saveNow() {
 }
 
 // ---- 토스트 ----
-export function toast(msg, ms = 2200) {
+export function toast(msg, ms = 2200, action = null) {
   const el = document.createElement('div');
   el.className = 'toast';
   el.textContent = msg;
+  if (action) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'toast-act';
+    b.textContent = action.label;
+    b.onclick = () => { el.remove(); action.run(); };
+    el.appendChild(b);
+  }
   document.getElementById('toast-root').appendChild(el);
   setTimeout(() => el.remove(), ms);
 }

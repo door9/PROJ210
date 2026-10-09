@@ -1,5 +1,5 @@
 // 오프라인 셸 캐시. 시세(data/*)는 항상 네트워크 우선.
-const CACHE = 'proj210-v110';
+const CACHE = 'proj210-v111';
 const SHELL = ['.', 'index.html', 'style.css', 'favicon.svg', 'manifest.json',
   'icon-192.png', 'icon-512.png', 'icon-512-maskable.png', 'apple-touch-icon.png',
   'js/app.js', 'js/core.js', 'js/store.js', 'js/prices.js', 'js/engine.js',
@@ -14,7 +14,7 @@ self.addEventListener('install', e => {
       .then(c => Promise.all(SHELL.map(u =>
         fetch(new Request(u, { cache: 'reload' })).then(r => {
           if (!r.ok) throw new Error(`${u} ${r.status}`);
-          return c.put(u, r);
+          return c.put(u, r.redirected ? new Response(r.body, r) : r);
         })
       )))
       .then(() => self.skipWaiting())
@@ -39,6 +39,9 @@ self.addEventListener('fetch', e => {
         return r;
       }).catch(() => caches.match(e.request))
     );
+  } else if (e.request.mode === 'navigate' && url.searchParams.has('login')) {
+    // 다시 로그인: 저장본을 건너뛰고 서버로
+    e.respondWith(fetch(e.request).catch(() => caches.open(CACHE).then(c => c.match('.'))));
   } else {
     e.respondWith(
       caches.match(e.request).then(hit => hit || fetch(e.request))
